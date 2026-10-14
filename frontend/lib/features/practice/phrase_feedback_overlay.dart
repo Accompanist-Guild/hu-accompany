@@ -19,12 +19,16 @@ import 'package:hu_accomponist/features/practice/Phrase_Feedback_Pill.dart';
 class PhraseFeedbackOverlay extends StatefulWidget {
   final PhraseReport? report;
 
+  /// Which findings the card lists (see [PhraseFeedbackPill.include]).
+  final bool Function(PhraseFeedbackItem item)? include;
+
   /// How long the card lingers before dismissing itself.
   final Duration linger;
 
   const PhraseFeedbackOverlay({
     super.key,
     required this.report,
+    this.include,
     this.linger = const Duration(seconds: 6),
   });
 
@@ -96,6 +100,7 @@ class _PhraseFeedbackOverlayState extends State<PhraseFeedbackOverlay> {
           : PhraseFeedbackPill(
               key: ValueKey(report.phrase),
               report: report,
+              include: widget.include,
               onDismiss: _dismissNow,
             ),
     );

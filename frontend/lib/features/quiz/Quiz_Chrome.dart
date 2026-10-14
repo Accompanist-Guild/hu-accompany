@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:hu_accomponist/shared/theme/Design_Tokens.dart';
 import 'package:hu_accomponist/features/search/Library_Browse.dart';
 import 'package:hu_accomponist/shared/ui/Press_Scale.dart';
+import 'package:hu_accomponist/features/shell/shell_controller.dart';
 
 /// Shared page frame for the quiz screens.
 ///
@@ -63,27 +64,30 @@ class QuizScaffold extends StatelessWidget {
                       ),
                     ),
                   ),
-                  PressScale(
-                    onTap: onClose ?? () => Navigator.of(context).maybePop(),
-                    borderRadius: Radii.pillRadius,
-                    pressedScale: 0.9,
-                    child: Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: libCreamCard,
-                        border: Border.all(
-                          color: libInk.withValues(alpha: 0.16),
+                  // Hidden when this is a tab of the app shell, where there
+                  // is nothing to close back to.
+                  if (onClose != null || !InShellPage.of(context))
+                    PressScale(
+                      onTap: onClose ?? () => Navigator.of(context).maybePop(),
+                      borderRadius: Radii.pillRadius,
+                      pressedScale: 0.9,
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: libCreamCard,
+                          border: Border.all(
+                            color: libInk.withValues(alpha: 0.16),
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 16,
+                          color: libInk.withValues(alpha: 0.6),
                         ),
                       ),
-                      child: Icon(
-                        Icons.close_rounded,
-                        size: 16,
-                        color: libInk.withValues(alpha: 0.6),
-                      ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -163,11 +167,8 @@ class QuizHeader extends StatelessWidget {
     );
   }
 
-  static Widget _rule() => Container(
-    width: 32,
-    height: 1,
-    color: libGold.withValues(alpha: 0.45),
-  );
+  static Widget _rule() =>
+      Container(width: 32, height: 1, color: libGold.withValues(alpha: 0.45));
 }
 
 /// Small tracking-spaced section heading, matching Library_Browse's own.

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hu_accomponist/shared/theme/Design_Tokens.dart';
 import 'package:hu_accomponist/features/search/Library_Browse.dart';
 import 'package:hu_accomponist/shared/ui/Press_Scale.dart';
+import 'package:hu_accomponist/features/shell/shell_controller.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // RESULT CARD — a clean pill-shaped row, tap to open.
@@ -106,6 +107,8 @@ class LibraryCloseButton extends StatelessWidget {
   const LibraryCloseButton({super.key});
   @override
   Widget build(BuildContext context) {
+    // As a tab of the app shell there is nothing to close back to.
+    if (InShellPage.of(context)) return const SizedBox.shrink();
     return PressScale(
       onTap: () => Navigator.pop(context),
       borderRadius: Radii.pillRadius,

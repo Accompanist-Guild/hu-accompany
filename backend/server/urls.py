@@ -12,5 +12,6 @@ urlpatterns = [
     path("", include("api.urls")),
     path("", include("scores.urls")),
     path("", include("hum.urls")),
+    path("", include("User_accounts.urls")),
     re_path(r'^storage/(?P<path>.*)$', views.storage),
 ]

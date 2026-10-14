@@ -21,14 +21,19 @@ class PhraseFeedbackPill extends StatelessWidget {
   final PhraseReport report;
   final VoidCallback onDismiss;
 
+  /// Which findings to list. An exercise shows the ones that name a note on
+  /// the note itself, so the card leaves those out instead of saying them
+  /// twice. Null lists them all.
+  final bool Function(PhraseFeedbackItem item)? include;
+
   const PhraseFeedbackPill({
     super.key,
     required this.report,
     required this.onDismiss,
+    this.include,
   });
 
-  PhraseFeedback get _band =>
-      PhraseFeedback.forScore(report.scores.overall);
+  PhraseFeedback get _band => PhraseFeedback.forScore(report.scores.overall);
 
   bool get _isGood => _band == PhraseFeedback.good;
 
@@ -42,11 +47,12 @@ class PhraseFeedbackPill extends StatelessWidget {
 
   /// Findings worst-first: major before minor, then most confident first.
   List<PhraseFeedbackItem> get _ranked {
-    final sorted = [...report.feedback]..sort((a, b) {
-      final severity = _weight(b.severity).compareTo(_weight(a.severity));
-      if (severity != 0) return severity;
-      return b.confidence.compareTo(a.confidence);
-    });
+    final sorted = [...report.feedback.where(include ?? (_) => true)]
+      ..sort((a, b) {
+        final severity = _weight(b.severity).compareTo(_weight(a.severity));
+        if (severity != 0) return severity;
+        return b.confidence.compareTo(a.confidence);
+      });
     return sorted;
   }
 

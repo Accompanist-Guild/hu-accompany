@@ -13,6 +13,7 @@ import 'package:hu_accomponist/features/shelf/Shelf_Page.dart';
 import 'package:hu_accomponist/integrations/hum/hum_models.dart';
 import 'package:hu_accomponist/shared/theme/Color_Theme.dart';
 import 'package:hu_accomponist/shared/theme/Design_Tokens.dart';
+import 'package:hu_accomponist/features/shell/shell_controller.dart';
 
 /// Hum a tune, hear it as a song, and change it with faders or words.
 /// All behaviour lives in [HumController]; this only draws it.
@@ -155,16 +156,26 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // A tab of the app shell has nowhere to go back to.
+    final hasBack = !InShellPage.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(Space.xs, Space.xs, Space.lg, 0),
+      padding: EdgeInsets.fromLTRB(
+        // The back button brings its own padding; without it the title
+        // lines up with the page's content.
+        hasBack ? Space.xs : Space.lg,
+        hasBack ? Space.xs : Space.md,
+        Space.lg,
+        0,
+      ),
       child: Row(
         children: [
-          IconButton(
-            onPressed: onBack,
-            icon: const Icon(Icons.arrow_back_rounded),
-            color: PracticePalette.mutedBrown,
-            tooltip: 'Back',
-          ),
+          if (hasBack)
+            IconButton(
+              onPressed: onBack,
+              icon: const Icon(Icons.arrow_back_rounded),
+              color: PracticePalette.mutedBrown,
+              tooltip: 'Back',
+            ),
           const Text(
             'HUM',
             style: TextStyle(

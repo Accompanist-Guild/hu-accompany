@@ -24,6 +24,7 @@ RATE_LIMIT_DEFAULT_PER_MINUTE = _config["RATE_LIMIT_DEFAULT_PER_MINUTE"]
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.auth",
+    "User_accounts",
     "api",
     "scores",
     "hum",

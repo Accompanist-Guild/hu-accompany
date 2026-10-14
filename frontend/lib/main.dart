@@ -6,7 +6,12 @@ import 'package:hu_accomponist/features/search/Music_Library_Page.dart';
 import 'package:hu_accomponist/features/practice/score_osmd_view.dart';
 import 'package:hu_accomponist/integrations/scores/score_models.dart';
 import 'package:hu_accomponist/features/home/Vinyl_Loading_Screen.dart';
-import 'package:hu_accomponist/features/home/Record_Navigator_Page.dart';
+import 'package:hu_accomponist/features/auth/auth_gate.dart';
+import 'package:hu_accomponist/features/onboarding/onboarding_store.dart';
+import 'package:hu_accomponist/features/shell/shell_controller.dart';
+import 'package:hu_accomponist/integrations/auth/auth_controller.dart';
+import 'package:hu_accomponist/integrations/auth/auth_repository.dart';
+import 'package:hu_accomponist/integrations/auth/session_store.dart';
 import 'package:hu_accomponist/src/rust/models.dart';
 import 'package:hu_accomponist/integrations/feedback/Phrase_send2_server.dart';
 import 'package:hu_accomponist/integrations/feedback/Pull_back_phrase.dart';
@@ -45,8 +50,55 @@ Future<void> main() async {
   runApp(const HuAccumponistApp());
 }
 
-class HuAccumponistApp extends StatelessWidget {
-  const HuAccumponistApp({super.key});
+class HuAccumponistApp extends StatefulWidget {
+  /// The auth state, the shell and the onboarding flag are handed in by
+  /// tests; the app builds the real ones.
+  const HuAccumponistApp({super.key, this.auth, this.shell, this.onboarding});
+
+  final AuthController? auth;
+  final ShellController? shell;
+  final OnboardingStore? onboarding;
+
+  @override
+  State<HuAccumponistApp> createState() => _HuAccumponistAppState();
+}
+
+class _HuAccumponistAppState extends State<HuAccumponistApp> {
+  late final OnboardingStore _onboarding =
+      widget.onboarding ?? const OnboardingStore();
+  late final ShellController _shell = widget.shell ?? ShellController();
+  late final AuthController _auth =
+      widget.auth ??
+      AuthController(
+        store: const SecureSessionStore(),
+        repository: const ApiAuthRepository(),
+        // A deleted account takes the tutorial flag with it, so whoever
+        // signs up next on this device is shown the tutorial.
+        onAccountDeleted: _onboarding.clear,
+      );
+
+  @override
+  void initState() {
+    super.initState();
+    _auth.addListener(_resetShellWhenSignedOut);
+    // Reads the stored session; the splash covers the wait. Until it
+    // answers, the auth gate shows nothing of its own.
+    if (_auth.status == AuthStatus.restoring) _auth.restore();
+  }
+
+  @override
+  void dispose() {
+    _auth.removeListener(_resetShellWhenSignedOut);
+    if (widget.auth == null) _auth.dispose();
+    if (widget.shell == null) _shell.dispose();
+    super.dispose();
+  }
+
+  /// The next person to sign in starts on Practice, not wherever the last
+  /// person left off.
+  void _resetShellWhenSignedOut() {
+    if (_auth.status == AuthStatus.signedOut) _shell.reset();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,12 +119,16 @@ class HuAccumponistApp extends StatelessWidget {
           },
         ),
       ),
-      // App now opens onto the vinyl spin-up splash and lands on the
-      // turntable navigator (Practice / Search / Shelf, chosen by spinning
-      // a record) instead of dropping straight into the score viewer.
-      // ScoreViewerPage is still fully intact below — it's just one of the
-      // records on the platter now (see Record_Navigator_Page.dart).
-      home: const Vinyl_Loading_Screen(child: Record_Navigator_Page()),
+      // Above the Navigator, so a page pushed over the shell (the shelf
+      // opened from the library, say) can still send the person to Practice.
+      builder: (context, child) =>
+          ShellScope(controller: _shell, child: child!),
+      // App opens onto the vinyl spin-up splash, then the auth gate: the
+      // login page when nobody is signed in, otherwise the app itself, on
+      // Practice, with the disk bar along the bottom (see AppShell).
+      home: Vinyl_Loading_Screen(
+        child: AuthGate(auth: _auth, shell: _shell, onboarding: _onboarding),
+      ),
     );
   }
 }
@@ -331,6 +387,18 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), duration: const Duration(seconds: 4)),
     );
+  }
+
+  @override
+  void didUpdateWidget(ScoreViewerPage old) {
+    super.didUpdateWidget(old);
+    // The shell keeps this page alive and hands it a new score when one is
+    // picked from Search or the Shelf. Each pick is a freshly loaded score,
+    // so identity tells a new pick from a rebuild.
+    final picked = widget.selected;
+    if (picked != null && !identical(picked, old.selected)) {
+      setState(() => _setScore(picked));
+    }
   }
 
   @override
@@ -670,7 +738,13 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
             Positioned(
               right: Space.lg,
               bottom: 76,
-              child: PhraseFeedbackOverlay(report: _latestReport),
+              child: PhraseFeedbackOverlay(
+                report: _latestReport,
+                // In an exercise, findings about a note show on that note.
+                include: _exercise == null
+                    ? null
+                    : (item) => !_exercise!.isAnchored(item),
+              ),
             ),
 
             // ─────────────────────────────────────────────
@@ -687,17 +761,18 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
             ),
 
             // ─────────────────────────────────────────────
-            // EXIT
+            // EXIT (only when pushed; inside the shell there is no "back")
             // ─────────────────────────────────────────────
-            Positioned(
-              right: 22,
-              bottom: 20,
-              child: PracticeBottomButton(
-                icon: Icons.arrow_back_rounded,
-                color: PracticePalette.mutedBrown,
-                onTap: () => Navigator.of(context).maybePop(),
+            if (!InShellPage.of(context))
+              Positioned(
+                right: 22,
+                bottom: 20,
+                child: PracticeBottomButton(
+                  icon: Icons.arrow_back_rounded,
+                  color: PracticePalette.mutedBrown,
+                  onTap: () => Navigator.of(context).maybePop(),
+                ),
               ),
-            ),
           ],
         ),
       ),

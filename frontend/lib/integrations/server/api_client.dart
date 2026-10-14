@@ -28,10 +28,14 @@ class ApiClient {
 
   final Duration timeout;
 
-  Future<http.Response> getJson(String path, {Map<String, String>? query}) {
+  Future<http.Response> getJson(
+    String path, {
+    Map<String, String>? query,
+    Map<String, String>? headers,
+  }) {
     return _send((baseUrl) {
       final uri = Uri.parse('$baseUrl$path').replace(queryParameters: query);
-      return http.get(uri).timeout(timeout);
+      return http.get(uri, headers: headers).timeout(timeout);
     });
   }
 
@@ -39,15 +43,24 @@ class ApiClient {
     String path,
     Map<String, dynamic> body, {
     Duration? timeout,
+    Map<String, String>? headers,
   }) {
     return _send((baseUrl) {
       return http
           .post(
             Uri.parse('$baseUrl$path'),
-            headers: {'Content-Type': 'application/json'},
+            headers: {'Content-Type': 'application/json', ...?headers},
             body: jsonEncode(body),
           )
           .timeout(timeout ?? this.timeout);
+    });
+  }
+
+  Future<http.Response> delete(String path, {Map<String, String>? headers}) {
+    return _send((baseUrl) {
+      return http
+          .delete(Uri.parse('$baseUrl$path'), headers: headers)
+          .timeout(timeout);
     });
   }
 
