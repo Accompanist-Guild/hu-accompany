@@ -38,6 +38,11 @@ STORAGE_ROOT = BASE_DIR / "storage"
 # server/urls.py serves publicly.
 HUM_DATA_DIR = Path(os.environ.get("HUM_DATA_DIR", BASE_DIR / "hum_data"))
 
+# Where the extracted score MusicXML is fetched from when it is not on this server's disk (Cloud Run has no
+# persistent disk): the public address of a bucket whose musicxml/ folder mirrors STORAGE_ROOT/musicxml.
+# Empty means local disk only. See scores/views.py.
+MUSICXML_BASE_URL = os.environ.get("MUSICXML_BASE_URL", "")
+
 # Order matters (server/middleware.py): health check, rate limit, app key, then Django.
 MIDDLEWARE = [
     "server.middleware.HealthCheckMiddleware",

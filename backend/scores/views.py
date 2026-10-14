@@ -1,14 +1,23 @@
+import re
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from django.conf import settings
 from django.db.models import Q
-from django.http import FileResponse, HttpRequest, JsonResponse
+from django.http import FileResponse, HttpRequest, HttpResponse, JsonResponse
 from django.views.decorators.http import require_GET
 
 from scores.models import Score
 
 DEFAULT_LIMIT = 25
 MAX_LIMIT = 50
+
+MUSICXML_TYPE = "application/vnd.recordare.musicxml+xml"
+# Where object storage is used, only paths shaped like the importer's output are ever requested.
+_REMOTE_PATH = re.compile(r"^musicxml/[A-Za-z0-9._-]+\.musicxml$")
+MAX_REMOTE_BYTES = 50 * 1024 * 1024
+REMOTE_TIMEOUT_SECONDS = 10
 
 
 @require_GET
@@ -48,10 +57,34 @@ def musicxml_view(request: HttpRequest, score_id: int):
         return JsonResponse({"error": f"score {score_id} not found"}, status=404)
 
     path = Path(settings.STORAGE_ROOT) / score.musicxml_path
-    if not path.is_file():
-        return JsonResponse({"error": f"MusicXML for score {score_id} is missing"}, status=404)
+    if path.is_file():
+        return FileResponse(path.open("rb"), content_type=MUSICXML_TYPE)
 
-    return FileResponse(
-        path.open("rb"),
-        content_type="application/vnd.recordare.musicxml+xml",
+    # A server with no persistent disk (Cloud Run) keeps the extracted files in object storage,
+    # under the same path the importer recorded, and MUSICXML_BASE_URL says where.
+    base_url = getattr(settings, "MUSICXML_BASE_URL", "")
+    if base_url and _REMOTE_PATH.match(score.musicxml_path):
+        return _from_object_storage(base_url, score.musicxml_path, score_id)
+
+    return JsonResponse({"error": f"MusicXML for score {score_id} is missing"}, status=404)
+
+
+def _from_object_storage(base_url: str, key: str, score_id: int):
+    unavailable = JsonResponse(
+        {"error": "The score storage is not available right now.", "code": "storage_unavailable"}, status=502
     )
+    if not base_url.lower().startswith(("http://", "https://")):
+        return unavailable  # misconfigured: never fetch file:// and the like
+    url = f"{base_url.rstrip('/')}/{key}"
+    try:
+        with urllib.request.urlopen(url, timeout=REMOTE_TIMEOUT_SECONDS) as remote:
+            data = remote.read(MAX_REMOTE_BYTES + 1)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return JsonResponse({"error": f"MusicXML for score {score_id} is missing"}, status=404)
+        return unavailable
+    except (urllib.error.URLError, OSError):
+        return unavailable
+    if len(data) > MAX_REMOTE_BYTES:
+        return unavailable
+    return HttpResponse(data, content_type=MUSICXML_TYPE)

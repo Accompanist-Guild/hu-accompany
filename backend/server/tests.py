@@ -10,6 +10,7 @@ the real `server.urls` and so needs the full production requirements.
 """
 
 import tempfile
+import time
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
@@ -310,3 +311,91 @@ class RealUrlConfTests(SimpleTestCase):
 
     def test_storage_is_not_served_in_production_even_with_the_key(self):
         self.assertEqual(Client().get("/storage/feedback/x.json", HTTP_X_APP_KEY="secret").status_code, 404)
+
+
+class JanitorTests(SimpleTestCase):
+    """server/janitor.py clears out old hum files. On Cloud Run the container's disk is
+    memory, so without this every hum would stay in RAM until the instance ran out."""
+
+    def setUp(self):
+        import os
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "hum_data"
+        (self.root / "uploads").mkdir(parents=True)
+        self.now = time.time()
+        self.os = os
+
+    def make(self, relative, age_hours):
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x")
+        stamp = self.now - age_hours * 3600
+        self.os.utime(path, (stamp, stamp))
+        return path
+
+    def sweep(self, max_age_hours=3):
+        from server.janitor import sweep
+        return sweep(self.root, max_age_seconds=max_age_hours * 3600, now=self.now)
+
+    def test_old_files_go_and_recent_ones_stay(self):
+        old = self.make("uploads/old.wav", age_hours=5)
+        recent = self.make("uploads/recent.wav", age_hours=1)
+        self.assertEqual(self.sweep(), 1)
+        self.assertFalse(old.exists())
+        self.assertTrue(recent.exists())
+
+    def test_folders_left_empty_are_removed_once_they_too_are_old_but_never_the_root(self):
+        self.make("runs/run1/step/out.json", age_hours=9)
+        self.make("runs/run2/out.json", age_hours=0.5)
+        self.sweep()  # the old file goes; the folders it leaves were only just changed, so they stay
+        self.assertTrue((self.root / "runs" / "run2" / "out.json").exists())
+        self.now += 4 * 3600  # later: the empty folders are now old as well
+        self.sweep()
+        self.assertFalse((self.root / "runs" / "run1").exists())
+        self.make("uploads/a.wav", age_hours=9)
+        self.sweep()
+        self.assertTrue(self.root.exists())
+
+    def test_a_folder_that_was_only_just_created_is_left_alone(self):
+        # The hum engine makes a run folder and writes into it a moment later. Removing it in
+        # between breaks that upload (seen in a rehearsal: "No such file ... intake_log.json").
+        fresh = self.root / "runs" / "run-in-progress"
+        fresh.mkdir(parents=True)
+        self.sweep()
+        self.assertTrue(fresh.is_dir())
+
+    def test_a_folder_with_a_recent_file_keeps_its_old_files_company(self):
+        # Only age decides, per file; a run folder is not deleted as a unit.
+        old = self.make("runs/r/old.json", age_hours=9)
+        self.make("runs/r/new.json", age_hours=0.1)
+        self.sweep()
+        self.assertFalse(old.exists())
+        self.assertTrue((self.root / "runs" / "r" / "new.json").exists())
+
+    def test_it_does_not_follow_a_symlink_out_of_the_folder(self):
+        outside = Path(self.tmp.name) / "precious"
+        outside.mkdir()
+        keep = outside / "keep.txt"
+        keep.write_text("do not delete")
+        self.os.utime(keep, (self.now - 99 * 3600,) * 2)
+        (self.root / "link").symlink_to(outside, target_is_directory=True)
+        self.sweep()
+        self.assertTrue(keep.exists())
+
+    def test_a_missing_folder_is_not_an_error(self):
+        from server.janitor import sweep
+        self.assertEqual(sweep(Path(self.tmp.name) / "nope", max_age_seconds=1, now=self.now), 0)
+
+    def test_it_refuses_dangerous_roots(self):
+        from server.janitor import sweep
+        for bad in (Path("/"), Path.home(), Path("/tmp"), Path("relative/path")):
+            with self.assertRaises(ValueError, msg=str(bad)):
+                sweep(bad, max_age_seconds=1, now=self.now)
+
+    def test_the_settings_come_from_the_environment(self):
+        from server.janitor import settings_from_env
+        root, max_age, interval = settings_from_env({"HUM_DATA_DIR": "/tmp/h/x", "HUM_TTL_HOURS": "2", "HUM_SWEEP_MINUTES": "5"})
+        self.assertEqual((root, max_age, interval), (Path("/tmp/h/x"), 7200.0, 300.0))
+        root, max_age, interval = settings_from_env({})
+        self.assertEqual(max_age, 3 * 3600.0)

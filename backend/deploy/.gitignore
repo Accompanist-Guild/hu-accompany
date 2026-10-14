@@ -1,0 +1,3 @@
+# Answers the setup script remembers (no passwords or keys). Local to your machine.
+.setup-state
+.setup-state.tmp

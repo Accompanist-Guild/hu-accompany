@@ -1,0 +1,31 @@
+# Keep the image small and keep secrets and local data out of it.
+
+# Local environments, secrets, and local data
+.venv/
+.env
+.env.*
+!.env.example
+db.sqlite3
+hum_data/
+storage/
+enhanced_pdfs/
+
+# The retired PDF/OMR pipeline and its helpers: nothing the live apps import (see requirements-prod.txt)
+Archive/
+pdf_processor/
+image_enhancer/
+imslp_search/
+db/
+services/
+
+# Samples and notes that aren't part of the running server
+rust_samples/
+*.md
+
+# Python and tooling noise
+__pycache__/
+*.pyc
+.pytest_cache/
+.git/
+Dockerfile
+.dockerignore
