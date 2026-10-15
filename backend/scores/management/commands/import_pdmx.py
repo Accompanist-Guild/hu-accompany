@@ -1,5 +1,9 @@
 """manage.py import_pdmx -- bring PDMX scores into the Score table.
 
+Only scores on the clearance list are imported (scores/clearance.py): PDMX's "public domain" label is an
+uploader's claim, and modern copyrighted music is in there. Build the list first with `build_clearance`; this
+command refuses to run without it.
+
 Reads the catalog and the .mxl files read-only; the only things written are
 the extracted .musicxml files under STORAGE_ROOT/musicxml/, the Score rows,
 and a skip report next to them. Safe to re-run: rows already imported are
@@ -16,7 +20,7 @@ from pathlib import Path
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
-from scores import catalog
+from scores import catalog, clearance
 from scores.models import Score
 from scores.musicxml import InvalidMusicXML, inspect, read_musicxml
 
@@ -35,6 +39,12 @@ class Command(BaseCommand):
             help="Folder containing PDMX's mxl/ directory.",
         )
         parser.add_argument("--catalog", type=Path, default=DEFAULT_CATALOG)
+        parser.add_argument(
+            "--clearance",
+            type=Path,
+            default=clearance.DEFAULT_CLEARED_LIST,
+            help="List of cleared score paths made by build_clearance. Scores not on it are skipped.",
+        )
         parser.add_argument("--min-rating", type=float, default=4.0)
         parser.add_argument("--limit", type=int, default=None)
         parser.add_argument(
@@ -48,6 +58,7 @@ class Command(BaseCommand):
             raise CommandError(f"catalog not found: {opts['catalog']}")
         if not (opts["pdmx_root"] / "mxl").is_dir():
             raise CommandError(f"no mxl/ folder under {opts['pdmx_root']}")
+        cleared = clearance.load_cleared(opts["clearance"])  # before anything is written
 
         out_dir = Path(settings.STORAGE_ROOT) / OUTPUT_DIR
         if not opts["dry_run"]:
@@ -59,6 +70,10 @@ class Command(BaseCommand):
             opts["catalog"], opts["min_rating"], opts["limit"]
         )
         for entry in entries:
+            if entry.mxl not in cleared:
+                # Policy, not a problem: counted, but kept out of the report of things to investigate.
+                counts["not cleared for copyright"] += 1
+                continue
             reason = self._import_one(entry, opts["pdmx_root"], out_dir, opts["dry_run"])
             counts[reason or "imported"] += 1
             if reason:

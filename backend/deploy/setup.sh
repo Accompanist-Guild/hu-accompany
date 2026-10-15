@@ -244,9 +244,12 @@ stage_deploy() {
   ask PROJECT "Google Cloud project id"
   need_neon
   [ -n "${MUSICXML_BASE_URL:-}" ] || die "run the r2 stage first"
+  # Printed on the public privacy policy, so it must be an address you really read.
+  ask SUPPORT_EMAIL "Support email address to show on the privacy policy (create it first)"
+  save SUPPORT_EMAIL "$SUPPORT_EMAIL"
   PROJECT="$PROJECT" REGION="$REGION" SERVICE="$SERVICE" \
   POSTGRES_HOST="$POSTGRES_HOST" POSTGRES_DB="$POSTGRES_DB" POSTGRES_USER="$POSTGRES_USER" \
-  MUSICXML_BASE_URL="$MUSICXML_BASE_URL" BILLING_ACCOUNT="${BILLING_ACCOUNT:-}" BUDGET_USD="$BUDGET_USD" \
+  MUSICXML_BASE_URL="$MUSICXML_BASE_URL" SUPPORT_EMAIL="$SUPPORT_EMAIL" BILLING_ACCOUNT="${BILLING_ACCOUNT:-}" BUDGET_USD="$BUDGET_USD" \
     backend/deploy/cloud-run.sh
 
   say "verify"
@@ -257,9 +260,15 @@ stage_deploy() {
   [ "$(curl -s -o /dev/null -w '%{http_code}' "$url/healthz")" = 200 ] && note "ok   $url/healthz" || note "FAIL $url/healthz"
   [ "$(curl -s -o /dev/null -w '%{http_code}' "$url/api/quiz/topics")" = 401 ] && note "ok   refuses requests without the key" || note "FAIL expected 401 without the key"
   [ "$(curl -s -o /dev/null -w '%{http_code}' -H "X-App-Key: $key" "$url/api/quiz/topics")" = 200 ] && note "ok   accepts the key" || note "FAIL expected 200 with the key"
+  for page in privacy terms support; do
+    [ "$(curl -s -o /dev/null -w '%{http_code}' "$url/$page")" = 200 ] && note "ok   $url/$page is public" || note "FAIL $url/$page is not reachable without a key"
+  done
   echo
   echo "Done."
   echo "  Service URL: $url"
+  echo "  App Store Connect  Privacy Policy URL: $url/privacy"
+  echo "                     Support URL:        $url/support"
+  echo "  Build the app with: --dart-define=PRIVACY_POLICY_URL=$url/privacy --dart-define=TERMS_OF_SERVICE_URL=$url/terms --dart-define=SUPPORT_EMAIL=$SUPPORT_EMAIL"
   echo "  App key:     read it any time with:"
   echo "               gcloud secrets versions access latest --secret app-api-key --project $PROJECT"
   echo "Give both to Claude for the app changes."

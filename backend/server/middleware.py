@@ -26,6 +26,8 @@ HUM_PREFIX = "/api/hum/"
 # The spoken-reply URL is fetched by an audio player, which can't send our header.
 # Its id is 96 random bits and expires, so the URL itself is the credential.
 KEY_EXEMPT_GET_PREFIX = "/api/hum/talk/speech/"
+# The privacy policy, terms and support pages (server/legal.py) are for anyone, including App Review.
+PUBLIC_PAGES = ("/privacy", "/terms", "/support")
 
 
 class RateLimiter:
@@ -128,7 +130,9 @@ class AppKeyMiddleware:
 
     @staticmethod
     def _allowed(request, key: str) -> bool:
-        if request.method in ("GET", "HEAD") and request.path.startswith(KEY_EXEMPT_GET_PREFIX):
+        if request.method in ("GET", "HEAD") and (
+            request.path.startswith(KEY_EXEMPT_GET_PREFIX) or request.path.rstrip("/") in PUBLIC_PAGES
+        ):
             return True
         provided = request.META.get("HTTP_X_APP_KEY", "")
         # Compare as bytes: compare_digest raises on non-ASCII text, which would turn a bad key into a 500.

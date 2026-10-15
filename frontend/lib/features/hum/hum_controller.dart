@@ -45,6 +45,7 @@ class HumController extends ChangeNotifier
     SongPlayer? rawPlayer,
     HumRecorder? chatRecorder,
     SongPlayer? voicePlayer,
+    Future<bool> Function()? ensureTalkConsent,
     FileSharer sharer = const SystemFileSharer(),
     SavedHumStore? store,
     this.maxHum = const Duration(seconds: 15),
@@ -65,6 +66,7 @@ class HumController extends ChangeNotifier
       host: this,
       recorder: chatRecorder,
       voice: voicePlayer,
+      ensureConsent: ensureTalkConsent,
     );
     _playingSub = _player.playing.listen((playing) {
       if (playing == isPlaying) return;

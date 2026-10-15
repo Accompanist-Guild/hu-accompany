@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:hu_accomponist/config/app_constants.dart';
 import 'package:hu_accomponist/features/auth/login_page.dart';
 import 'package:hu_accomponist/features/onboarding/onboarding_store.dart';
 import 'package:hu_accomponist/features/shell/app_shell.dart';
@@ -18,6 +19,10 @@ class AuthGate extends StatelessWidget {
   final OnboardingStore onboarding;
   final LinkOpener links;
 
+  /// Whether to ask people to sign in first. Null means the build setting,
+  /// [AppConstants.loginRequired]; tests pass a value to pick one.
+  final bool? loginRequired;
+
   /// Passed on to the shell, so tests can leave out the real pages.
   @visibleForTesting
   final Widget Function(int slot)? pageBuilder;
@@ -28,11 +33,23 @@ class AuthGate extends StatelessWidget {
     required this.shell,
     this.onboarding = const OnboardingStore(),
     this.links = const SystemLinkOpener(),
+    this.loginRequired,
     this.pageBuilder,
   });
 
   @override
   Widget build(BuildContext context) {
+    // Login is off: straight into the app, without waiting for the stored
+    // session. Nothing here is deleted; turning it on restores the switch below.
+    if (!(loginRequired ?? AppConstants.loginRequired)) {
+      return AppShell(
+        key: const ValueKey('app'),
+        auth: auth,
+        controller: shell,
+        onboarding: onboarding,
+        pageBuilder: pageBuilder,
+      );
+    }
     return ListenableBuilder(
       listenable: auth,
       builder: (context, _) => AnimatedSwitcher(

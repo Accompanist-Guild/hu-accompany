@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hu_accomponist/features/hum/chat_controller.dart';
 import 'package:hu_accomponist/features/hum/hum_controller.dart';
 import 'package:hu_accomponist/integrations/hum/chat_models.dart';
+import 'package:hu_accomponist/integrations/hum/song_project.dart';
 import 'package:hu_accomponist/integrations/server/api_client.dart';
 
 import 'support/hum_fakes.dart';
@@ -41,6 +44,141 @@ void main() {
   double drums() => controller.band.project!.track('drums')!.volume;
   Future<void> settle() => Future<void>.delayed(Duration.zero);
 
+  group('permission to share with the AI services', () {
+    // Talk mode sends requests to Google Gemini and ElevenLabs. Nothing may leave, and the microphone
+    // may not even start, until the person has said yes.
+    late FakeRecorder voiceMic;
+    final extra = <HumController>[];
+    var asked = 0;
+
+    HumController withConsent(Future<bool> Function() ask) {
+      final c = HumController(
+        repository: repository,
+        recorder: FakeRecorder(),
+        player: FakePlayer(),
+        rawPlayer: FakePlayer(),
+        chatRecorder: voiceMic,
+        voicePlayer: FakePlayer(),
+        sharer: FakeSharer(),
+        store: MemorySavedHumStore(),
+        ensureTalkConsent: () {
+          asked++;
+          return ask();
+        },
+      );
+      extra.add(c);
+      return c;
+    }
+
+    setUp(() {
+      voiceMic = FakeRecorder(path: '/tmp/said.wav');
+      asked = 0;
+    });
+
+    tearDown(() async {
+      for (final c in extra) {
+        c.dispose();
+      }
+      extra.clear();
+    });
+
+    Future<HumController> ready(Future<bool> Function() ask) async {
+      final c = withConsent(ask);
+      await c.startHum();
+      await c.stopHum();
+      return c;
+    }
+
+    test('typing sends nothing until they agree', () async {
+      final c = await ready(() async => false);
+      await c.chat.send('softer drums');
+
+      expect(repository.chatTexts, isEmpty);
+      expect(
+        c.chat.entries.where((e) => e.speaker == ChatSpeaker.user),
+        isEmpty,
+      );
+      expect(c.chat.entries.single.speaker, ChatSpeaker.notice);
+      expect(c.chat.entries.single.text, contains('AI services'));
+      expect(c.chat.state, ChatVoice.idle);
+    });
+
+    test(
+      'speaking does not even ask for the microphone until they agree',
+      () async {
+        final c = await ready(() async => false);
+        await c.chat.tapMic();
+
+        expect(voiceMic.permissionRequests, 0);
+        expect(voiceMic.starts, 0);
+        expect(c.chat.state, ChatVoice.idle);
+        expect(c.chat.entries.single.speaker, ChatSpeaker.notice);
+      },
+    );
+
+    test('they are asked before the microphone permission', () async {
+      var micAskedBeforeConsent = true;
+      final c = await ready(() async {
+        micAskedBeforeConsent = voiceMic.permissionRequests > 0;
+        return true;
+      });
+      await c.chat.tapMic();
+
+      expect(micAskedBeforeConsent, isFalse);
+      expect(voiceMic.starts, 1);
+      expect(c.chat.state, ChatVoice.listening);
+    });
+
+    test('agreeing lets the edit through', () async {
+      final c = await ready(() async => true);
+      await c.chat.send('softer drums');
+
+      expect(repository.chatTexts, ['softer drums']);
+      expect(c.band.project!.track('drums')!.volume, closeTo(0.4, 1e-9));
+    });
+
+    test('stopping a recording does not ask a second time', () async {
+      final c = await ready(() async => true);
+      await c.chat.tapMic(); // start: asks
+      await c.chat.tapMic(); // stop and send: must not ask again
+      await settle();
+
+      expect(asked, 1);
+      expect(repository.chatVoicePaths, ['/tmp/said.wav']);
+    });
+
+    test(
+      'a second tap while the question is open does not open a second question',
+      () async {
+        final answer = Completer<bool>();
+        final c = await ready(() => answer.future);
+        final first = c.chat.send('softer drums');
+        final second = c.chat.send('softer drums');
+        answer.complete(true);
+        await Future.wait([first, second]);
+
+        expect(asked, 1);
+        expect(repository.chatTexts, ['softer drums']);
+      },
+    );
+
+    test('a question that fails counts as no', () async {
+      final c = await ready(() async => throw StateError('no screen'));
+      await c.chat.send('softer drums');
+
+      expect(repository.chatTexts, isEmpty);
+      expect(c.chat.entries.single.speaker, ChatSpeaker.notice);
+    });
+
+    test(
+      'with no question wired in, nothing changes (existing behaviour)',
+      () async {
+        await chat.send('softer drums');
+        expect(repository.chatTexts, ['softer drums']);
+      },
+    );
+  });
+
   group('typing', () {
     test('an edit changes the song, plays it, and can be undone', () async {
       await chat.send('softer drums');
@@ -64,6 +202,33 @@ void main() {
       expect(drums(), closeTo(0.4, 1e-9));
       expect(song.played, hasLength(4));
     });
+
+    test(
+      'an undo or redo that fails becomes a notice, not an error that escapes',
+      () async {
+        // The edit itself is guarded; the step back and forward must be too.
+        final failing = _FailingStepsHost(controller.band.project!);
+        final guarded = ChatController(
+          repository: repository,
+          host: failing,
+          recorder: FakeRecorder(),
+          voice: FakePlayer(),
+        );
+        addTearDown(guarded.dispose);
+        var notices = 0;
+        for (final intent in ['undo', 'redo']) {
+          repository.onChat = (text, project) =>
+              ChatReply(heard: text, intent: intent, reply: 'Done.');
+          await guarded.send(intent); // no exception may reach here
+          final said = guarded.entries
+              .where((e) => e.speaker == ChatSpeaker.notice)
+              .toList();
+          expect(said, hasLength(++notices), reason: intent);
+          expect(said.last.text, contains("didn't go through"), reason: intent);
+          expect(guarded.state, ChatVoice.idle, reason: intent);
+        }
+      },
+    );
 
     test('a question or a refusal changes nothing', () async {
       repository.onChat = (text, project) => const ChatReply(
@@ -223,4 +388,30 @@ void main() {
       'Hum a tune first, then tell me how to change it.',
     );
   });
+}
+
+/// A host whose song can be edited but whose undo and redo always fail (the way a real one might if
+/// the band engine throws part-way).
+class _FailingStepsHost implements ChatHost {
+  _FailingStepsHost(this._project);
+  final SongProject _project;
+
+  @override
+  Future<SongProject?> projectForChat() async => _project;
+  @override
+  String get notReadyReason => '';
+  @override
+  bool get canUndo => true;
+  @override
+  bool get canRedo => true;
+  @override
+  Future<void> applyChatEdit(SongProject project, String label) async {}
+  @override
+  Future<bool> undoEdit() async => throw Exception('engine stopped');
+  @override
+  Future<bool> redoEdit() async => throw Exception('engine stopped');
+  @override
+  Future<void> playSong() async {}
+  @override
+  Future<void> stopSong() async {}
 }

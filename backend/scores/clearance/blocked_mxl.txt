@@ -1,0 +1,4 @@
+# Scores removed after a complaint from a rights-holder (or our own review). One path per line, like
+# mxl/2/21/Qm....mxl. Add the line, then run `manage.py build_clearance`, commit, and run
+# `manage.py prune_uncleared --yes --keys-file removed.txt` on the server (see docs/app-store/legal-and-shipping.md).
+# Keep a dated comment above each entry saying who asked and when.

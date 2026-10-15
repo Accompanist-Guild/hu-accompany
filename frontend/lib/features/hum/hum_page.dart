@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:hu_accomponist/features/hum/hum_chat.dart';
+import 'package:hu_accomponist/features/hum/talk_consent.dart';
 import 'package:hu_accomponist/features/hum/hum_controller.dart';
 import 'package:hu_accomponist/features/hum/hum_controls.dart';
 import 'package:hu_accomponist/features/hum/hum_notes_view.dart';
@@ -29,7 +30,9 @@ class HumPage extends StatefulWidget {
 }
 
 class _HumPageState extends State<HumPage> {
-  late final HumController _controller = widget.controller ?? HumController();
+  late final HumController _controller =
+      widget.controller ??
+      HumController(ensureTalkConsent: () => ensureTalkConsent(context));
 
   @override
   void dispose() {

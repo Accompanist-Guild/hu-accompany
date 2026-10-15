@@ -8,6 +8,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import 'package:hu_accomponist/config/app_constants.dart';
 import 'package:hu_accomponist/features/hum/file_sharer.dart';
+import 'package:hu_accomponist/features/hum/talk_consent.dart';
 import 'package:hu_accomponist/features/shell/shell_controller.dart';
 import 'package:hu_accomponist/integrations/auth/auth_controller.dart';
 import 'package:hu_accomponist/integrations/links/link_opener.dart';
@@ -40,7 +41,13 @@ class SettingsPage extends StatefulWidget {
   final AuthController auth;
   final LinkOpener links;
   final FileSharer sharer;
+  final TalkConsent consent;
   final Future<AppVersion> Function() loadVersion;
+
+  /// Whether the app has accounts. Null means the build setting,
+  /// [AppConstants.loginRequired]. Without accounts, Log out, Delete account
+  /// and Export my data have nothing to act on, so they are left out.
+  final bool? loginRequired;
 
   /// Defaults to asking the shell, which is where the tutorial lives.
   final VoidCallback? onReplayTutorial;
@@ -50,7 +57,9 @@ class SettingsPage extends StatefulWidget {
     required this.auth,
     this.links = const SystemLinkOpener(),
     this.sharer = const SystemFileSharer(),
+    this.consent = const PrefsTalkConsent(),
     this.loadVersion = AppVersion.fromPlatform,
+    this.loginRequired,
     this.onReplayTutorial,
   });
 
@@ -60,6 +69,36 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   late final Future<AppVersion> _version = widget.loadVersion();
+
+  bool get _hasAccounts => widget.loginRequired ?? AppConstants.loginRequired;
+
+  /// Whether Talk mode may share requests with the AI services. Null while loading.
+  bool? _talkAllowed;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.consent.isGranted().then((allowed) {
+      if (mounted) setState(() => _talkAllowed = allowed);
+    });
+  }
+
+  Future<void> _talkSharing() async {
+    if (_talkAllowed != true) {
+      _say('You will be asked the next time you use Talk mode.');
+      return;
+    }
+    final confirmed = await _confirm(
+      title: 'Stop sharing with AI services?',
+      message:
+          'Talk mode will stop working until you agree again. Nothing you '
+          'already sent is affected.',
+      action: 'Stop sharing',
+    );
+    if (!confirmed) return;
+    await widget.consent.withdraw();
+    if (mounted) setState(() => _talkAllowed = false);
+  }
 
   void _say(String message) {
     if (!mounted) return;
@@ -271,8 +310,8 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
             const SizedBox(height: Space.xs),
-            const Text(
-              'Your account',
+            Text(
+              _hasAccounts ? 'Your account' : 'Your settings',
               style: TextStyle(
                 color: PracticePalette.brown,
                 fontSize: 22,
@@ -319,18 +358,28 @@ class _SettingsPageState extends State<SettingsPage> {
               title: 'Account & data',
               rows: [
                 _SettingsRow(
-                  icon: Icons.download_outlined,
-                  label: 'Export my data',
-                  subtitle: 'A copy of what we hold about your account',
-                  onTap: _exportData,
+                  icon: Icons.record_voice_over_outlined,
+                  label: 'Talk mode and AI services',
+                  subtitle: _talkAllowed == true
+                      ? 'Allowed. Tap to stop sharing with Google Gemini and ElevenLabs'
+                      : 'Not allowed. You will be asked when you use Talk mode',
+                  onTap: _talkSharing,
                 ),
-                _SettingsRow(
-                  icon: Icons.delete_outline_rounded,
-                  label: 'Delete account',
-                  subtitle: 'Permanently removes your account',
-                  destructive: true,
-                  onTap: _deleteAccount,
-                ),
+                if (_hasAccounts) ...[
+                  _SettingsRow(
+                    icon: Icons.download_outlined,
+                    label: 'Export my data',
+                    subtitle: 'A copy of what we hold about your account',
+                    onTap: _exportData,
+                  ),
+                  _SettingsRow(
+                    icon: Icons.delete_outline_rounded,
+                    label: 'Delete account',
+                    subtitle: 'Permanently removes your account',
+                    destructive: true,
+                    onTap: _deleteAccount,
+                  ),
+                ],
               ],
             ),
             _Section(
@@ -344,15 +393,16 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ],
             ),
-            _Section(
-              rows: [
-                _SettingsRow(
-                  icon: Icons.logout_rounded,
-                  label: 'Log out',
-                  onTap: _logOut,
-                ),
-              ],
-            ),
+            if (_hasAccounts)
+              _Section(
+                rows: [
+                  _SettingsRow(
+                    icon: Icons.logout_rounded,
+                    label: 'Log out',
+                    onTap: _logOut,
+                  ),
+                ],
+              ),
             const SizedBox(height: Space.sm),
             Center(
               child: FutureBuilder<AppVersion>(

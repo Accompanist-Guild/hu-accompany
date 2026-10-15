@@ -20,6 +20,10 @@ SECURE_PROXY_SSL_HEADER = _config["SECURE_PROXY_SSL_HEADER"]
 APP_API_KEY = _config["APP_API_KEY"]
 RATE_LIMIT_HUM_PER_MINUTE = _config["RATE_LIMIT_HUM_PER_MINUTE"]
 RATE_LIMIT_DEFAULT_PER_MINUTE = _config["RATE_LIMIT_DEFAULT_PER_MINUTE"]
+# Shown on the public /privacy, /terms and /support pages (server/legal.py).
+LEGAL_PUBLISHER = _config["LEGAL_PUBLISHER"]
+SUPPORT_EMAIL = _config["SUPPORT_EMAIL"]
+HUM_TTL_HOURS = _config["HUM_TTL_HOURS"]  # how long hum files are kept; stated in the privacy policy
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",

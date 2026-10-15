@@ -1,0 +1,94 @@
+<p class="meta">Effective {{EFFECTIVE_DATE}}</p>
+
+<p>{{PUBLISHER}} ("we", "us") makes {{APP_NAME}}, an app for practising music. It listens while you play and gives you feedback, and it can turn your humming into a song. This policy explains what information the app and our server handle, why, who else receives it, and what you can do about it. If anything here is unclear, write to <a href="mailto:{{SUPPORT_EMAIL}}">{{SUPPORT_EMAIL}}</a>.</p>
+
+<h2>The short version</h2>
+<div class="summary">
+<ul>
+  <li>We do not sell your personal information. We do not use it for advertising, and the app has no advertising, analytics or tracking tools.</li>
+  <li>Your account is an email address, a password and, if you like, a name. We keep your password only in hashed form, so we cannot read it.</li>
+  <li>When you play an instrument, the app analyses the sound on your phone. Only the notes it detects (their pitch, timing and loudness), not the recording, are sent to our server to produce feedback.</li>
+  <li>When you hum, the recording is sent to our server to turn it into a song. It is deleted automatically after about {{HUM_RETENTION}}.</li>
+  <li>If you use Talk mode to change a song by typing or speaking, your request is also sent to two outside services, Google Gemini and ElevenLabs, described below.</li>
+  <li>You can download your data and delete your account at any time from Settings in the app.</li>
+</ul>
+</div>
+
+<h2>What we collect and why</h2>
+
+<h3>Your account</h3>
+<p>When you create an account we collect your email address, a password and an optional name. We use them to sign you in and to answer your requests for help. We also record the date you joined. Each phone you sign in on is given a sign-in token; the server stores only a hashed copy of it.</p>
+
+<h3>The microphone</h3>
+<p>The app asks for microphone access so it can hear you play, hear you hum, and hear you speak when you use Talk mode. The microphone is on only while you are recording. You can turn the permission off at any time in the iOS Settings app, but the app's listening features will not work without it.</p>
+
+<h3>Playing an instrument</h3>
+<p>The sound is analysed on your phone. For each note the app detects, it sends our server the note's pitch, timing and loudness, together with the title of the piece you are practising, so the server can compare your playing with the score and write feedback. The recording itself is not sent.</p>
+
+<h3>Humming</h3>
+<p>When you hum, the recording is sent to our server over an encrypted connection. Software there finds the notes and builds a song. Recordings, and the files made from them, are deleted automatically about {{HUM_RETENTION}} after they were last used. We do not use them for anything other than making your song.</p>
+
+<h3>Talk mode</h3>
+<p>Talk mode lets you change a song by typing or speaking.</p>
+<ul>
+  <li>Google Gemini, an AI service, receives the text of your request and a description of the song you are working on (such as its style, instruments and tempo) so it can work out what to change.</li>
+  <li>If you speak, ElevenLabs receives your voice recording and turns it into text. ElevenLabs also turns the app's spoken replies from text into speech.</li>
+  <li>We do not store your voice recording: our server passes it on and does not keep a copy. ElevenLabs is a different matter: we have not turned on any no-retention setting, so ElevenLabs may keep the voice recording and its transcript. Under its terms it may also use them to improve its services and develop new products, and that permission cannot be withdrawn afterwards. Reply text is held in our server's memory for about five minutes so the app can play it, and is then discarded.</li>
+</ul>
+
+<h3>Scores, search and quizzes</h3>
+<p>When you search the score library or start a quiz, the words you search for or the quiz topic are sent to our server to produce results. We do not build a history of them or link them to your account.</p>
+
+<h3>Practice feedback</h3>
+<p>The feedback the server writes about a practice session (which notes were early, late or wrong) is not linked to your account. It is kept in temporary storage on our server and not in a permanent database.</p>
+
+<h3>What stays on your phone</h3>
+<p>Your shelf, saved hums and songs, notes you draw on scores, tutorial progress and settings are stored on your phone only. Deleting the app removes them. Your sign-in token is kept in the iOS Keychain and is removed when you log out or delete your account.</p>
+
+<h3>Technical information</h3>
+<p>Like any internet service, our hosting provider records technical details of requests to our server, such as your IP address, the time and the address requested. We use these to keep the service running, to prevent abuse (for example, by limiting how often one device can ask for something) and to fix problems. The app does not read or use your advertising identifier.</p>
+
+<h2>Who receives your information</h2>
+<p>We use these companies to run the service. They handle your information to provide that service to us.</p>
+<ul>
+  <li><strong>Google Cloud</strong> runs our server and keeps its request logs.</li>
+  <li><strong>Neon</strong> hosts our database, which holds your account details (email address, hashed password, name, join date and sign-in tokens) and the score catalog.</li>
+  <li><strong>Cloudflare</strong> stores the sheet-music files. Our server fetches them; no personal information is sent to Cloudflare.</li>
+  <li><strong>ElevenLabs</strong> converts voice to text and text to speech in Talk mode. What it does with that data is governed by its own terms and privacy policy.</li>
+  <li><strong>Google Gemini</strong> (Google's AI service) reads your Talk mode requests. What it does with that data is governed by Google's own terms and privacy policy.</li>
+</ul>
+<p>We may also disclose information if the law requires it, or to protect the safety and rights of people using the service. We do not otherwise share your personal information, and we do not sell it.</p>
+
+<h2>How long we keep information</h2>
+<ul>
+  <li><strong>Account details:</strong> until you delete your account. Deleting it removes your email address, name, password and sign-in tokens from our database and signs you out on every phone. Copies in our database provider's backups can remain for a short while before they are overwritten.</li>
+  <li><strong>Hum recordings and the files made from them:</strong> about {{HUM_RETENTION}} after they were last used.</li>
+  <li><strong>Talk mode replies:</strong> about five minutes, in memory.</li>
+  <li><strong>Technical request logs:</strong> for a limited time under our hosting provider's standard settings.</li>
+  <li><strong>Information held by ElevenLabs and Google:</strong> for as long as their own policies allow. ElevenLabs may keep the voice recordings and transcripts it receives and, under its terms, use them to improve its services. We cannot delete them from our side.</li>
+</ul>
+
+<h2>Your choices and rights</h2>
+<ul>
+  <li><strong>See or download your data:</strong> in the app, open Settings and tap Export my data.</li>
+  <li><strong>Delete your account:</strong> in the app, open Settings and tap Delete account. This cannot be undone.</li>
+  <li><strong>Microphone:</strong> in the iOS Settings app, open {{APP_NAME}} and switch Microphone on or off.</li>
+  <li><strong>Anything else</strong> (corrections, questions, requests about your information): write to <a href="mailto:{{SUPPORT_EMAIL}}">{{SUPPORT_EMAIL}}</a>. We aim to reply within 30 days.</li>
+</ul>
+<p>Depending on where you live (for example Canada, the European Economic Area, the United Kingdom or California) you may have the right to access, correct or delete your personal information, to object to or restrict how it is used, and to complain to your data protection authority. In Canada that is the Office of the Privacy Commissioner. We handle these requests the same way wherever you live.</p>
+
+<h2>Children</h2>
+<p>{{APP_NAME}} is not directed at children under 13, and you must be at least 13 (or older where your country requires) to create an account. We do not knowingly collect information from children under 13. If you believe a child has given us information, write to us and we will delete it.</p>
+<p>Talk mode is for people 18 or older, because Google and ElevenLabs, the services it uses, require that their users are adults. The app asks you to confirm your age before Talk mode sends anything, and we do not knowingly send the requests of anyone under 18 to them.</p>
+
+<h2>Security</h2>
+<p>The app talks to our server over encrypted connections (HTTPS). Passwords and sign-in tokens are stored only in hashed form, the server limits how often it can be asked for things, and only the people who run the service can reach the database. No system is perfectly secure, so we cannot promise absolute protection.</p>
+
+<h2>Where information is processed</h2>
+<p>Our server, our database and the services above are operated mainly in the United States, so your information is processed there and may be subject to that country's laws.</p>
+
+<h2>Changes to this policy</h2>
+<p>If we change this policy we will update the date at the top, and if the change is important we will tell you in the app or by email.</p>
+
+<h2>Contact</h2>
+<p>The person responsible for privacy at {{PUBLISHER}}, and the place to send any request or complaint about your information, is {{PUBLISHER}} at <a href="mailto:{{SUPPORT_EMAIL}}">{{SUPPORT_EMAIL}}</a>. See also our <a href="/terms">Terms of Service</a> and our <a href="/support">Support</a> page.</p>

@@ -33,7 +33,7 @@ The cleaner fix is to move that state to shared storage, but that means changing
 - **One gunicorn worker** (`deploy/gunicorn.conf.py`): talk replies live in that one process's memory. Concurrency comes from threads.
 - **Disk is memory on Cloud Run**, so `server/janitor.py` deletes hum files older than `HUM_TTL_HOURS` (default 3) every `HUM_SWEEP_MINUTES` (default 10); otherwise uploads would pile up until the instance runs out of memory.
 
-What this costs you: a restart or redeploy loses in-flight hums (the app already says "Hum again"), the service can't scale out, and an always-on instance costs money while idle. From memory, and **to be checked against Google's pricing calculator**, 2 vCPU + 4 GiB is roughly $30-40 a month; sizing down to 1 vCPU + 2 GiB (halving that) is reasonable once real memory use is measured. Neon and R2 should be free at this size.
+What this costs you: a restart or redeploy loses in-flight hums (the app already says "Hum again"), the service can't scale out, and an always-on instance costs money while idle. Checked against [Google's price list](https://cloud.google.com/run/pricing) (Tier 1 regions such as us-central1): an idle minimum instance is billed at $0.0000025 per vCPU-second and per GiB-second, so 2 vCPU + 4 GiB idle for a 30-day month is about 6 x 0.0000025 x 2,592,000 s = **$39**, plus the (higher) active rate while it serves requests and $0.40 per million requests; 1 vCPU + 2 GiB is about **$19**. Cloudflare R2's free tier ([pricing](https://developers.cloudflare.com/r2/pricing/)) covers 10 GB of storage and free egress, which is plenty for the screened score library. **Neon's free plan suspends the database after 5 minutes idle and keeps 6 hours of restore history** ([plans](https://neon.com/docs/introduction/plans)), so the first request after a quiet spell is slow; use a paid plan or disable scale-to-zero before App Review.
 
 When this needs to change: if one instance can't handle the load, the hum state has to move out of the container (uploads and runs to R2, talk replies to shared storage) before running more than one.
 
@@ -74,15 +74,15 @@ The script's logic was tested against stand-in `gcloud`, `neonctl`, `wrangler`, 
 6. **Deploy:**
    ```bash
    PROJECT=<id> POSTGRES_HOST=<host> POSTGRES_DB=<db> POSTGRES_USER=<user> \
-   MUSICXML_BASE_URL=https://pub-xxxx.r2.dev BILLING_ACCOUNT=<id> BUDGET_USD=<amount> \
+   MUSICXML_BASE_URL=https://pub-xxxx.r2.dev SUPPORT_EMAIL=<your support address> BILLING_ACCOUNT=<id> BUDGET_USD=<amount> \
    backend/deploy/cloud-run.sh          # DRY_RUN=1 prints the commands without running them
    ```
    It builds the image in Cloud Build, deploys with the flags above, then sets `ALLOWED_HOSTS` to the service's address and creates a budget alert.
-7. **Check:** `curl <url>/healthz` answers `ok`; `curl -H 'X-App-Key: <key>' <url>/api/quiz/topics` returns the list.
+7. **Check:** `curl <url>/healthz` answers `ok`; `curl -H 'X-App-Key: <key>' <url>/api/quiz/topics` returns the list; and `<url>/privacy`, `<url>/terms` and `<url>/support` open in a browser with no key. Those three are the addresses App Store Connect and the app need (see [`docs/app-store/submission-checklist.md`](../../docs/app-store/submission-checklist.md)).
 
 ## Environment variables (production)
 
-Required (the server refuses to start without them): `DJANGO_SECRET_KEY`, `ALLOWED_HOSTS`, `APP_API_KEY`. Database: `POSTGRES_HOST`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `PGSSLMODE=require` for Neon. Also `MUSICXML_BASE_URL`, `GEMINI_API_KEY`, `ELEVENLABS_API_KEY`. Optional: `RATE_LIMIT_HUM_PER_MINUTE`, `RATE_LIMIT_DEFAULT_PER_MINUTE`, `HUM_TTL_HOURS`, `HUM_SWEEP_MINUTES`, `GUNICORN_THREADS`. See `backend/.env.example`.
+Required (the server refuses to start without them): `DJANGO_SECRET_KEY`, `ALLOWED_HOSTS`, `APP_API_KEY`, and `SUPPORT_EMAIL` (a real address: it is printed on the public privacy policy). Database: `POSTGRES_HOST`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `PGSSLMODE=require` for Neon. Also `MUSICXML_BASE_URL`, `GEMINI_API_KEY`, `ELEVENLABS_API_KEY`. Optional: `RATE_LIMIT_HUM_PER_MINUTE`, `RATE_LIMIT_DEFAULT_PER_MINUTE`, `HUM_TTL_HOURS`, `HUM_SWEEP_MINUTES`, `GUNICORN_THREADS`. See `backend/.env.example`.
 
 ## Try the image on your own machine
 

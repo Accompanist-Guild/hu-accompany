@@ -4,7 +4,7 @@
 # secrets, database, object storage).
 #
 #   PROJECT=my-project POSTGRES_HOST=ep-xyz.neon.tech POSTGRES_DB=music_catalog POSTGRES_USER=app \
-#   MUSICXML_BASE_URL=https://pub-xxxx.r2.dev  backend/deploy/cloud-run.sh
+#   MUSICXML_BASE_URL=https://pub-xxxx.r2.dev SUPPORT_EMAIL=support@yourdomain.com  backend/deploy/cloud-run.sh
 #
 # DRY_RUN=1 prints every command instead of running it.
 set -euo pipefail
@@ -14,6 +14,7 @@ set -euo pipefail
 : "${POSTGRES_DB:?set POSTGRES_DB}"
 : "${POSTGRES_USER:?set POSTGRES_USER}"
 : "${MUSICXML_BASE_URL:?set MUSICXML_BASE_URL (the public address of the bucket holding musicxml/)}"
+: "${SUPPORT_EMAIL:?set SUPPORT_EMAIL (the address printed on the public privacy policy; the server will not start without it)}"
 REGION="${REGION:-us-central1}"
 SERVICE="${SERVICE:-hu-accompany}"
 REPO="${REPO:-hu-accompany}"
@@ -43,7 +44,7 @@ run gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --project "
   --allow-unauthenticated \
   --min-instances 1 --max-instances 1 \
   --concurrency 8 --cpu 2 --memory 4Gi --timeout 300 --cpu-boost \
-  --set-env-vars "ALLOWED_HOSTS=${ALLOWED_HOSTS:-placeholder.invalid},POSTGRES_HOST=${POSTGRES_HOST},POSTGRES_DB=${POSTGRES_DB},POSTGRES_USER=${POSTGRES_USER},PGSSLMODE=require,MUSICXML_BASE_URL=${MUSICXML_BASE_URL}" \
+  --set-env-vars "ALLOWED_HOSTS=${ALLOWED_HOSTS:-placeholder.invalid},POSTGRES_HOST=${POSTGRES_HOST},POSTGRES_DB=${POSTGRES_DB},POSTGRES_USER=${POSTGRES_USER},PGSSLMODE=require,MUSICXML_BASE_URL=${MUSICXML_BASE_URL},SUPPORT_EMAIL=${SUPPORT_EMAIL}" \
   --set-secrets "DJANGO_SECRET_KEY=django-secret-key:latest,APP_API_KEY=app-api-key:latest,POSTGRES_PASSWORD=postgres-password:latest,GEMINI_API_KEY=gemini-api-key:latest,ELEVENLABS_API_KEY=elevenlabs-api-key:latest"
 
 echo "== 4. Allow the service's own address =="

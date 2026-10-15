@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'dart:ui';
 
+import 'package:hu_accomponist/features/hum/talk_consent.dart';
 import 'package:hu_accomponist/features/hum/file_sharer.dart';
 import 'package:hu_accomponist/features/hum/hum_audio.dart';
 import 'package:hu_accomponist/integrations/hum/chat_models.dart';
@@ -19,10 +20,14 @@ class FakeRecorder implements HumRecorder {
   bool allowed;
   String? path;
   int starts = 0;
+  int permissionRequests = 0;
   bool disposed = false;
 
   @override
-  Future<bool> requestPermission() async => allowed;
+  Future<bool> requestPermission() async {
+    permissionRequests++;
+    return allowed;
+  }
 
   @override
   Future<void> start() async => starts++;
@@ -409,4 +414,21 @@ class MemorySavedHumStore implements SavedHumStore {
   @override
   Future<File> audioFor(SavedHum song) async =>
       File('${folder.path}/${song.audioFile}');
+}
+
+
+/// Talk mode permission kept in memory.
+class MemoryTalkConsent implements TalkConsent {
+  MemoryTalkConsent({this.granted = false});
+
+  bool granted;
+
+  @override
+  Future<bool> isGranted() async => granted;
+
+  @override
+  Future<void> grant() async => granted = true;
+
+  @override
+  Future<void> withdraw() async => granted = false;
 }

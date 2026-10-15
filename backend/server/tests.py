@@ -16,7 +16,7 @@ from pathlib import Path
 from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpResponse, JsonResponse
 from django.test import Client, RequestFactory, SimpleTestCase, override_settings
-from django.urls import path
+from django.urls import path, re_path
 
 from server.config import build_settings
 from server.middleware import RateLimiter
@@ -26,6 +26,7 @@ PROD = {
     "DJANGO_SECRET_KEY": "a-real-secret",
     "ALLOWED_HOSTS": "api.example.com",
     "APP_API_KEY": "app-key",
+    "SUPPORT_EMAIL": "help@example.org",
 }
 
 
@@ -96,6 +97,29 @@ class ConfigTests(SimpleTestCase):
         self.assertGreater(cfg["RATE_LIMIT_HUM_PER_MINUTE"], 0)
         self.assertGreater(cfg["RATE_LIMIT_DEFAULT_PER_MINUTE"], cfg["RATE_LIMIT_HUM_PER_MINUTE"])
         self.assertEqual(build_settings(PROD | {"RATE_LIMIT_HUM_PER_MINUTE": "7"})["RATE_LIMIT_HUM_PER_MINUTE"], 7)
+
+    def test_the_legal_pages_have_sensible_development_defaults(self):
+        cfg = build_settings({})
+        self.assertEqual(cfg["LEGAL_PUBLISHER"], "AG")
+        self.assertEqual(cfg["HUM_TTL_HOURS"], 3.0)
+        self.assertTrue(cfg["SUPPORT_EMAIL"].endswith(".invalid"))  # visibly a placeholder, never a real address
+
+    def test_the_legal_pages_settings_can_be_changed(self):
+        cfg = build_settings({"LEGAL_PUBLISHER": "Someone Else", "SUPPORT_EMAIL": "me@example.org", "HUM_TTL_HOURS": "1.5"})
+        self.assertEqual((cfg["LEGAL_PUBLISHER"], cfg["SUPPORT_EMAIL"], cfg["HUM_TTL_HOURS"]), ("Someone Else", "me@example.org", 1.5))
+
+    def test_production_will_not_start_with_a_missing_or_placeholder_support_address(self):
+        # The address is published in the privacy policy that App Review reads. A placeholder must never get there.
+        without = {k: v for k, v in PROD.items() if k != "SUPPORT_EMAIL"}
+        for bad in (None, "", "not-an-address", "support@hu-accompany.invalid", "support@hu-accompany.example"):
+            env = dict(without) if bad is None else {**without, "SUPPORT_EMAIL": bad}
+            with self.assertRaisesMessage(ImproperlyConfigured, "SUPPORT_EMAIL"):
+                build_settings(env)
+
+    def test_a_retention_that_is_not_a_positive_number_is_reported_by_name(self):
+        for bad in ("lots", "0", "-2"):
+            with self.assertRaisesMessage(ImproperlyConfigured, "HUM_TTL_HOURS"):
+                build_settings({"HUM_TTL_HOURS": bad})
 
     def test_a_rate_limit_that_is_not_a_number_is_reported_by_name(self):
         with self.assertRaisesMessage(ImproperlyConfigured, "RATE_LIMIT_HUM_PER_MINUTE"):
@@ -211,6 +235,24 @@ class MiddlewareTests(SimpleTestCase):
             self.assertEqual(c.get("/api/hum/talk/speech/abc123").status_code, 200)
             self.assertEqual(c.post("/api/hum/talk/speech/abc123").status_code, 401)
 
+    def test_the_public_pages_need_no_key_but_only_for_reading(self):
+        # App Review, and anyone tapping "Privacy Policy" before signing up, must be able to read them.
+        with override_settings(APP_API_KEY="secret"):
+            c = self.fresh_client()
+            for name in ("privacy", "terms", "support"):
+                self.assertEqual(c.get(f"/{name}").status_code, 200, name)
+                self.assertEqual(c.get(f"/{name}/").status_code, 200, name)
+                self.assertEqual(c.head(f"/{name}").status_code, 200, name)
+                self.assertEqual(c.post(f"/{name}").status_code, 401, name)
+            self.assertEqual(c.get("/privacy/other").status_code, 401)
+            self.assertEqual(c.get("/privacyx").status_code, 401)
+            self.assertEqual(c.get("/api/ping").status_code, 401)
+
+    def test_the_public_pages_are_still_rate_limited(self):
+        with override_settings(APP_API_KEY="secret", RATE_LIMIT_DEFAULT_PER_MINUTE=2):
+            c = self.fresh_client()
+            self.assertEqual([c.get("/terms").status_code for _ in range(3)], [200, 200, 429])
+
     # -- rate limit -----------------------------------------------------------
     def test_hum_routes_have_their_own_tighter_limit(self):
         with override_settings(RATE_LIMIT_HUM_PER_MINUTE=2, RATE_LIMIT_DEFAULT_PER_MINUTE=100):
@@ -309,6 +351,13 @@ class RealUrlConfTests(SimpleTestCase):
         self.assertEqual(c.get("/api/scores/search?q=bach").status_code, 401)
         self.assertEqual(c.get("/api/quiz/topics", HTTP_X_APP_KEY="secret").status_code, 200)
 
+    def test_the_legal_pages_are_public_on_the_real_server(self):
+        c = Client()
+        for name, words in (("privacy", "Privacy Policy"), ("terms", "Terms of Service"), ("support", "Support")):
+            response = c.get(f"/{name}")  # note: no key
+            self.assertEqual(response.status_code, 200, name)
+            self.assertIn(words, response.content.decode(), name)
+
     def test_storage_is_not_served_in_production_even_with_the_key(self):
         self.assertEqual(Client().get("/storage/feedback/x.json", HTTP_X_APP_KEY="secret").status_code, 404)
 
@@ -399,3 +448,243 @@ class JanitorTests(SimpleTestCase):
         self.assertEqual((root, max_age, interval), (Path("/tmp/h/x"), 7200.0, 300.0))
         root, max_age, interval = settings_from_env({})
         self.assertEqual(max_age, 3 * 3600.0)
+
+
+# ---- The public pages App Store review looks for: /privacy, /terms, /support ------------------------
+
+from server import legal  # noqa: E402  (the routes for them join the tiny URL config at the top of this file)
+
+urlpatterns += [re_path(rf"^{name}/?$", legal.page_view(name)) for name in legal.TITLES]
+
+import re
+from html.parser import HTMLParser
+
+LEGAL_SETTINGS = dict(LEGAL_PUBLISHER="AG", SUPPORT_EMAIL="help@example.org", HUM_TTL_HOURS=3.0)
+
+
+class _Outline(HTMLParser):
+    """Collects what a page needs to be a sane web page, and checks tags are balanced."""
+
+    VOID = {"meta", "link", "br", "hr", "img", "input"}
+
+    def __init__(self):
+        super().__init__()
+        self.stack, self.problems, self.h1s, self.title, self.links, self.meta = [], [], 0, "", [], {}
+        self.lang, self._in_title = None, False
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == "html":
+            self.lang = a.get("lang")
+        if tag == "h1":
+            self.h1s += 1
+        if tag == "a" and a.get("href"):
+            self.links.append(a["href"])
+        if tag == "meta" and a.get("name"):
+            self.meta[a["name"]] = a.get("content", "")
+        if tag == "title":
+            self._in_title = True
+        if tag not in self.VOID:
+            self.stack.append(tag)
+
+    def handle_endtag(self, tag):
+        if tag == "title":
+            self._in_title = False
+        if tag in self.VOID:
+            return
+        if not self.stack or self.stack[-1] != tag:
+            self.problems.append(f"</{tag}> closes {self.stack[-1] if self.stack else 'nothing'}")
+        else:
+            self.stack.pop()
+
+    def handle_data(self, data):
+        if self._in_title:
+            self.title += data
+
+
+def outline(html):
+    parser = _Outline()
+    parser.feed(html)
+    parser.close()
+    if parser.stack:
+        parser.problems.append(f"never closed: {parser.stack}")
+    return parser
+
+
+@override_settings(ROOT_URLCONF="server.tests", MIDDLEWARE=[], ALLOWED_HOSTS=["testserver"], **LEGAL_SETTINGS)
+class LegalPagesTests(SimpleTestCase):
+    """The pages are plain HTML in backend/legal/, filled in from settings, so what they say about
+    the publisher, the contact address and how long hums are kept can't drift from the server's setup."""
+
+    PAGES = ("privacy", "terms", "support")
+
+    def get(self, name, **extra):
+        return self.client.get(f"/{name}", **extra)
+
+    def text(self, name):
+        response = self.get(name)
+        self.assertEqual(response.status_code, 200, name)
+        return response.content.decode()
+
+    def test_every_page_is_served_as_html(self):
+        for name in self.PAGES:
+            response = self.get(name)
+            self.assertEqual(response.status_code, 200, name)
+            self.assertEqual(response["Content-Type"], "text/html; charset=utf-8", name)
+
+    def test_a_trailing_slash_works_too(self):
+        self.assertEqual(self.client.get("/privacy/").status_code, 200)
+
+    def test_only_reading_is_allowed(self):
+        self.assertEqual(self.client.head("/terms").status_code, 200)
+        self.assertEqual(self.client.post("/terms").status_code, 405)
+
+    def test_every_page_names_the_publisher_and_the_contact_address(self):
+        for name in self.PAGES:
+            html = self.text(name)
+            self.assertIn("AG", html, name)
+            self.assertIn("mailto:help@example.org", html, name)
+
+    def test_nothing_is_left_unfilled(self):
+        for name in self.PAGES:
+            self.assertNotIn("{{", self.text(name), name)
+            self.assertNotIn("example.invalid", self.text(name), name)
+
+    def test_the_policy_and_terms_carry_their_effective_date(self):
+        from server.legal import EFFECTIVE_DATE
+        for name in ("privacy", "terms"):
+            self.assertIn(EFFECTIVE_DATE, self.text(name), name)
+
+    def test_the_hum_retention_stated_is_the_one_the_server_uses(self):
+        for hours, said in ((3.0, "3 hours"), (1.0, "1 hour"), (1.5, "1.5 hours")):
+            with override_settings(HUM_TTL_HOURS=hours):
+                self.assertIn(said, self.text("privacy"), hours)
+
+    def test_no_page_keeps_a_stale_hard_coded_retention(self):
+        # With the setting at 7 hours, "3 hours" (the default) must not survive anywhere a person could read it.
+        with override_settings(HUM_TTL_HOURS=7.0):
+            for name in self.PAGES:
+                self.assertNotIn("3 hours", self.text(name), name)
+            self.assertIn("7 hours", self.text("privacy"))
+            self.assertIn("7 hours", self.text("support"))
+
+    def test_values_from_settings_cannot_inject_markup(self):
+        with override_settings(SUPPORT_EMAIL="<script>alert(1)</script>@a.b", LEGAL_PUBLISHER="A&G <b>"):
+            for name in self.PAGES:
+                html = self.text(name)
+                self.assertNotIn("<script>alert", html, name)
+                self.assertIn("A&amp;G &lt;b&gt;", html, name)
+
+    def test_browsers_are_told_not_to_guess_or_run_anything_but_our_styles(self):
+        response = self.get("privacy")
+        self.assertEqual(response["X-Content-Type-Options"], "nosniff")
+        csp = response["Content-Security-Policy"]
+        self.assertIn("default-src 'none'", csp)
+        self.assertIn("frame-ancestors 'none'", csp)
+        self.assertNotIn("script", csp)
+        self.assertIn("public", response["Cache-Control"])
+
+    def test_each_page_is_well_formed_and_works_on_a_phone(self):
+        for name in self.PAGES:
+            page = outline(self.text(name))
+            self.assertEqual(page.problems, [], name)
+            self.assertEqual(page.lang, "en", name)
+            self.assertEqual(page.h1s, 1, name)
+            self.assertIn("width=device-width", page.meta.get("viewport", ""), name)
+            self.assertTrue(page.title.strip(), name)
+
+    def test_the_pages_link_to_each_other_and_every_link_resolves(self):
+        for name in self.PAGES:
+            links = outline(self.text(name)).links
+            for other in set(self.PAGES) - {name}:
+                self.assertIn(f"/{other}", links, f"{name} should link to {other}")
+            for link in links:
+                if link.startswith("/"):
+                    self.assertEqual(self.client.get(link).status_code, 200, f"{name} -> {link}")
+
+    # -- what the policy says has to be true of the app ------------------------------------------------
+    def test_the_policy_lists_everyone_user_data_is_sent_to(self):
+        html = self.text("privacy")
+        section = html.split("<h2>Who receives your information</h2>")[1].split("<h2>")[0]
+        for processor in ("Google Cloud", "Neon", "Cloudflare", "ElevenLabs", "Google Gemini"):
+            self.assertIn(f"<strong>{processor}</strong>", section, processor)
+
+    def test_the_policy_covers_what_the_app_collects_and_what_it_does_not_do(self):
+        html = self.text("privacy")
+        for phrase in ("email address", "password", "microphone", "humming", "voice", "hashed",
+                       "do not sell", "do not use", "advertising", "under 13", "HTTPS"):
+            self.assertIn(phrase.lower(), html.lower(), phrase)
+
+    def test_the_policy_tells_people_how_to_use_their_rights_in_the_app(self):
+        html = self.text("privacy")
+        for label in ("Settings", "Export my data", "Delete account"):
+            self.assertIn(label, html, label)
+
+    def test_the_wording_matches_the_buttons_the_app_really_has(self):
+        settings_page = Path(__file__).resolve().parents[2] / "frontend/lib/features/settings/settings_page.dart"
+        if not settings_page.is_file():
+            self.skipTest("the Flutter app is not in this checkout (e.g. inside the Docker image)")
+        source = settings_page.read_text()
+        for label in ("Export my data", "Delete account", "Privacy Policy", "Terms of Service"):
+            self.assertIn(f"'{label}'", source, f"the app no longer has a '{label}' button, so the pages are wrong")
+
+    def test_the_policy_discloses_every_third_party_service_the_server_uses(self):
+        requirements = Path(__file__).resolve().parents[1] / "requirements-prod.txt"
+        if not requirements.is_file():
+            self.skipTest("requirements-prod.txt not present")
+        wanted = requirements.read_text().lower()
+        html = self.text("privacy").lower()
+        for package, said in (("elevenlabs", "elevenlabs"), ("google-genai", "gemini")):
+            if package in wanted:
+                self.assertIn(said, html, f"the server uses {package} but the policy does not say so")
+
+    def test_the_terms_cover_what_apple_and_users_need(self):
+        html = self.text("terms")
+        for phrase in ("13", "Canada", "Apple", "delete your account", "as is", "public-domain", "automated",
+                       "artificial intelligence"):
+            self.assertIn(phrase.lower(), html.lower(), phrase)
+
+    def test_the_terms_include_each_term_apple_requires_in_a_custom_licence(self):
+        # Apple's minimum terms for an app that uses its own licence agreement instead of Apple's standard one.
+        html = self.text("terms")
+        for phrase in ("not Apple Inc.", "Apple is not a party", "Usage Rules in the Apple Media Services Terms",
+                       "maintenance and support", "refund the purchase price", "product liability",
+                       "infringes", "U.S. government embargo", "third-party terms", "third-party beneficiaries",
+                       "Questions or complaints"):
+            self.assertIn(phrase.lower(), html.lower(), phrase)
+
+    def test_the_terms_credit_the_dataset_as_its_license_requires_and_describe_the_screening(self):
+        # PDMX is CC BY 4.0: credit, link, and say that changes were made. And the library is screened, not "all public domain".
+        html = self.text("terms")
+        for phrase in ("PDMX", "CC BY 4.0", "doi.org/10.5281/zenodo.13763756", "creativecommons.org/licenses/by/4.0",
+                       "Long et al", "we made changes", "we screen", "we will remove"):
+            self.assertIn(phrase.lower(), html.lower(), phrase)
+
+    def test_the_policy_is_plain_that_elevenlabs_may_keep_the_voice_recording(self):
+        # ElevenLabs keeps speech-to-text audio and text by default; its no-retention mode is for enterprise customers.
+        # Saying only "under its own terms" would understate that.
+        html = self.text("privacy").lower()
+        self.assertIn("may keep the voice recording", html)
+        self.assertIn("no-retention setting", html)
+        # Its Terms (section 4(d)) license it to use customer content, voice included, to improve its services and
+        # develop new products, perpetually and irrevocably. People must be told that, not just "may keep".
+        self.assertIn("improve its services", html)
+        self.assertIn("cannot be withdrawn", html)
+
+    def test_talk_mode_is_stated_to_be_for_adults_in_both_documents(self):
+        # Google's and ElevenLabs' terms both bar services used by people under 18, so Talk mode is adults-only
+        # and the pages must say so just as the permission box in the app does.
+        for page in ("terms", "privacy"):
+            html = self.text(page).lower()
+            self.assertIn("talk mode is for people 18 or older", html, page)
+            self.assertIn("require", html, page)
+
+    def test_the_policy_names_who_to_contact_about_privacy(self):
+        # Quebec's privacy law expects a named person responsible for privacy and a way to reach them.
+        html = self.text("privacy")
+        self.assertIn("person responsible for privacy", html.lower())
+
+    def test_the_support_page_answers_the_common_questions(self):
+        html = self.text("support")
+        for phrase in ("Delete account", "Export my data", "microphone", "Settings"):
+            self.assertIn(phrase.lower(), html.lower(), phrase)
