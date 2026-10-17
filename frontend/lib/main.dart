@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:hu_accomponist/features/practice/Draggable_Recorder_Button.dart';
 import 'package:hu_accomponist/features/practice/Drawing_Overlay.dart';
@@ -25,6 +27,10 @@ import 'package:hu_accomponist/features/practice/phrase_feedback_overlay.dart';
 import 'package:hu_accomponist/features/practice/Exercise_Display.dart';
 import 'package:hu_accomponist/features/practice/exercise_picker.dart';
 import 'package:hu_accomponist/features/practice/Exercise_Session.dart';
+import 'package:hu_accomponist/features/practice/live_judge.dart';
+import 'package:hu_accomponist/features/practice/score_practice_session.dart';
+import 'package:hu_accomponist/features/practice/score_practice_sheet.dart';
+import 'package:hu_accomponist/features/practice/score_timeline.dart';
 import 'package:hu_accomponist/integrations/audio/Rust_Bridge.dart';
 
 // Re-exported so anything that already reached for PhraseFeedback through
@@ -158,6 +164,21 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
   /// The exercise being practised, if any. While set it replaces the score,
   /// and it is what Rust listens for and the backend judges against.
   ExerciseSession? _exercise;
+
+  /// The loaded score's notes, once the score view has read them off it.
+  ScoreTimeline? _timeline;
+
+  /// How the player chose to practise this score (tempo, hands); asked the
+  /// first time they record it.
+  ScorePracticeSettings? _scoreSettings;
+
+  /// The latest run through the score. Kept after recording stops, so its
+  /// last phrases can still come back and mark their notes.
+  ScorePracticeSession? _scoreSession;
+
+  /// What the player just got wrong, shown briefly over the score.
+  String? _mistake;
+  Timer? _mistakeTimer;
   final DrawingController _drawing = DrawingController();
 
   /// Call this from the Flutter-Rust-Bridge performance-result callback.
@@ -181,6 +202,7 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
     }
     if (!isRecording) {
       _exercise?.finish();
+      _scoreSession?.finish();
     }
     if (isRecording) {
       // A fresh recording gets a fresh session — the backend assigns the
@@ -241,6 +263,11 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
       exercise.onRustBatch(notes);
       return;
     }
+    final scoreSession = _scoreSession;
+    if (scoreSession != null) {
+      scoreSession.onRustBatch(notes);
+      return;
+    }
 
     if (_expectedNotes.isEmpty) {
       debugPrint(
@@ -299,6 +326,9 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
   // Swaps in a new score, or clears it if [selected] is null.
   void _setScore(LoadedScore? selected) {
     if (selected != null) _endExercise();
+    _endScoreSession();
+    _timeline = null;
+    _scoreSettings = null;
     _score = selected;
     _osmd.setInk('[]'); // until this score's own ink is read
     if (selected != null) _loadInk(selected.summary.id);
@@ -342,6 +372,7 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
     if (choice == null || !mounted) return;
     setState(() {
       _endExercise();
+      _endScoreSession();
       _exercise = ExerciseSession(
         exercise: choice.exercise,
         bpm: choice.bpm,
@@ -358,23 +389,91 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
     _exercise = null;
   }
 
+  void _endScoreSession() {
+    _scoreSession?.dispose();
+    _scoreSession = null;
+  }
+
+  // ── Playing along with a score ─────────────────────────────────────
+
+  ScorePracticeSettings _defaultSettings(ScoreTimeline timeline) =>
+      ScorePracticeSettings(bpm: timeline.bpm.roundToDouble());
+
+  /// Tempo and hands for this score. Returns null if the player backed out.
+  Future<ScorePracticeSettings?> _chooseSettings({
+    required String action,
+  }) async {
+    final timeline = _timeline;
+    if (timeline == null) return null;
+    final chosen = await ScorePracticeSheet.show(
+      context,
+      title: _piece.title,
+      timeline: timeline,
+      current: _scoreSettings ?? _defaultSettings(timeline),
+      action: action,
+    );
+    if (chosen != null && mounted) setState(() => _scoreSettings = chosen);
+    return chosen;
+  }
+
+  /// Loads the score into Rust and counts the player in. False to cancel.
+  Future<bool> _prepareScore() async {
+    final timeline = _timeline;
+    if (timeline == null) {
+      _say('The score is still loading.');
+      return false;
+    }
+    if (timeline.isEmpty) {
+      _say("This score has no notes the app can follow.");
+      return false;
+    }
+    final settings =
+        _scoreSettings ?? await _chooseSettings(action: 'Start playing');
+    if (settings == null || !mounted) return false;
+
+    _endScoreSession();
+    final session = ScorePracticeSession(
+      piece: _piece,
+      timeline: timeline,
+      settings: settings,
+      onLive: _onScoreLive,
+      onReport: _onExerciseReport,
+    );
+    setState(() {
+      _scoreSession = session;
+      _mistake = null;
+    });
+    _osmd.resetLive();
+    final error = await session.prepare();
+    if (error != null && error != 'cancelled') _say(error);
+    return error == null;
+  }
+
+  void _onScoreLive(LiveUpdate update) {
+    if (!mounted) return;
+    _osmd.live(update, follow: _isRecording);
+    if (update.mistakes.isEmpty) return;
+    _mistakeTimer?.cancel();
+    setState(() => _mistake = update.mistakes.last);
+    _mistakeTimer = Timer(const Duration(milliseconds: 2600), () {
+      if (mounted) setState(() => _mistake = null);
+    });
+  }
+
   void _onExerciseReport(PhraseReport report) {
     if (!mounted) return;
     setState(() => _latestReport = report);
     setPhraseFeedback(PhraseFeedback.forScore(report.scores.overall));
   }
 
-  /// Runs between the mic tap and the microphone opening. Recording is
-  /// refused without an exercise: Rust only listens for the notes of a
-  /// loaded piece, and nothing derives those notes from a score's MusicXML
-  /// yet, so a score alone gives Rust nothing to listen for.
+  /// Runs between the mic tap and the microphone opening: loads what Rust
+  /// is to listen for (the exercise, or the score's notes) and counts the
+  /// player in.
   Future<bool> _beforeCapture() async {
     final exercise = _exercise;
     if (exercise == null) {
-      _say(
-        'Pick an exercise first. Following along with a score is not '
-        'supported yet.',
-      );
+      if (_hasScore) return _prepareScore();
+      _say('Pick a score or an exercise first.');
       return false;
     }
     final error = await exercise.prepare();
@@ -404,6 +503,8 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
   @override
   void dispose() {
     _exercise?.dispose();
+    _scoreSession?.dispose();
+    _mistakeTimer?.cancel();
     _drawing.dispose();
     _osmd.canUndoInk.dispose();
     super.dispose();
@@ -415,6 +516,9 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
     _osmd.onInkChanged = (strokes) {
       final id = _score?.summary.id;
       if (id != null) _inkStore.save(id, strokes);
+    };
+    _osmd.onTimeline = (timeline) {
+      if (mounted) setState(() => _timeline = timeline);
     };
     _setScore(widget.selected);
   }
@@ -590,6 +694,14 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
                           ),
                         ),
                       ),
+
+                      // Count-in before playing along with a score.
+                      if (_scoreSession != null)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: _ScoreCountIn(session: _scoreSession!),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -721,6 +833,21 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
               ),
             ),
 
+            // ─────────────────────────────────────────────
+            // WHAT WENT WRONG
+            // ─────────────────────────────────────────────
+            // Over the top of the score, clear of the tool buttons.
+            Positioned(
+              top: MediaQuery.orientationOf(context) == Orientation.landscape
+                  ? Space.xl
+                  : 104,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                child: Center(child: _MistakeCaption(text: _mistake)),
+              ),
+            ),
+
             // The draggable control owns its own Rust-bridge notesStream()
             // recording pipeline; it reports UI toggle state here and, per
             // phrase, hands the notes off for upload + feedback polling.
@@ -746,6 +873,25 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
                     : (item) => !_exercise!.isAnchored(item),
               ),
             ),
+
+            // Tempo and hands for playing along, between the bottom buttons.
+            if (_exercise == null &&
+                _hasScore &&
+                _timeline != null &&
+                !_timeline!.isEmpty)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 28,
+                child: Center(
+                  child: _PlayAlongChip(
+                    settings: _scoreSettings ?? _defaultSettings(_timeline!),
+                    showHands: _timeline!.hasHands,
+                    enabled: !_isRecording,
+                    onTap: () => _chooseSettings(action: 'Done'),
+                  ),
+                ),
+              ),
 
             // ─────────────────────────────────────────────
             // SEARCH
@@ -784,4 +930,168 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
     height: 1,
     color: PracticePalette.lightGold.withValues(alpha: 0.65),
   );
+}
+
+/// The tempo and hands a score is played along at; tap to change.
+class _PlayAlongChip extends StatelessWidget {
+  final ScorePracticeSettings settings;
+  final bool showHands;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _PlayAlongChip({
+    required this.settings,
+    required this.showHands,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = [
+      '${settings.bpm.round()} bpm',
+      if (showHands) settings.hands.label,
+    ].join('  ·  ');
+    return Semantics(
+      button: true,
+      label: 'Play along at $label. Tap to change.',
+      excludeSemantics: true,
+      child: AnimatedOpacity(
+        opacity: enabled ? 1 : 0.55,
+        duration: Motion.fast,
+        child: GestureDetector(
+          onTap: enabled ? onTap : null,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: Space.sm,
+              vertical: Space.xxs + 2,
+            ),
+            decoration: BoxDecoration(
+              color: PracticePalette.paper,
+              borderRadius: Radii.pillRadius,
+              border: Border.all(
+                color: PracticePalette.lightGold.withValues(alpha: 0.9),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.speed_rounded,
+                  size: 15,
+                  color: PracticePalette.gold,
+                ),
+                const SizedBox(width: Space.xxs + 2),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: PracticePalette.brown,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A short line about the latest mistake, fading in and out.
+class _MistakeCaption extends StatelessWidget {
+  final String? text;
+  const _MistakeCaption({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final text = this.text;
+    return AnimatedSwitcher(
+      duration: Motion.fast,
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: SlideTransition(
+          position: Tween(
+            begin: const Offset(0, -0.25),
+            end: Offset.zero,
+          ).animate(animation),
+          child: child,
+        ),
+      ),
+      child: text == null
+          ? const SizedBox.shrink()
+          : Container(
+              key: ValueKey(text),
+              padding: const EdgeInsets.symmetric(
+                horizontal: Space.sm,
+                vertical: Space.xxs + 2,
+              ),
+              decoration: BoxDecoration(
+                color: PracticePalette.noteWrong.withValues(alpha: 0.1),
+                borderRadius: Radii.pillRadius,
+                border: Border.all(
+                  color: PracticePalette.noteWrong.withValues(alpha: 0.35),
+                ),
+              ),
+              child: Text(
+                text,
+                style: const TextStyle(
+                  color: PracticePalette.brown,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+    );
+  }
+}
+
+/// The count-in, beat by beat, over the score.
+class _ScoreCountIn extends StatelessWidget {
+  final ScorePracticeSession session;
+  const _ScoreCountIn({required this.session});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: session,
+      builder: (context, _) {
+        final beat = session.countIn;
+        return AnimatedOpacity(
+          opacity: beat == null ? 0 : 1,
+          duration: Motion.fast,
+          child: Center(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 160),
+              transitionBuilder: (child, animation) => ScaleTransition(
+                scale: Tween(begin: 0.7, end: 1.0).animate(animation),
+                child: FadeTransition(opacity: animation, child: child),
+              ),
+              child: Container(
+                key: ValueKey(beat),
+                width: 96,
+                height: 96,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: PracticePalette.paper.withValues(alpha: 0.92),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: PracticePalette.lightGold),
+                  boxShadow: Elevations.overlay(PracticePalette.brown),
+                ),
+                child: Text(
+                  beat == null ? '' : '$beat',
+                  style: const TextStyle(
+                    color: PracticePalette.gold,
+                    fontSize: 40,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }

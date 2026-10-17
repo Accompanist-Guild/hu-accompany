@@ -16,16 +16,38 @@
     #score { padding: 8px 4px 24px; }
     #ink { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
     #ink path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* Live practice (OSMDBridge.live). A note due to be played sways a little,
+       now and then, so the eye finds it without it shouting; a note just
+       played gives a small hop. Both move the whole note (head and stem). */
+    .hu-due { animation: hu-due 1.3s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 80%; }
+    @keyframes hu-due {
+      0%, 46%, 100% { transform: rotate(0deg); }
+      10% { transform: rotate(-5deg); }
+      22% { transform: rotate(4deg); }
+      34% { transform: rotate(-2deg); }
+    }
+    .hu-jump { animation: hu-jump 360ms cubic-bezier(.3, .7, .35, 1); transform-box: fill-box; transform-origin: 50% 100%; }
+    @keyframes hu-jump {
+      0% { transform: translateY(0) scale(1); }
+      38% { transform: translateY(-7px) scale(1.08); }
+      72% { transform: translateY(1px) scale(.98); }
+      100% { transform: translateY(0) scale(1); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .hu-due, .hu-jump { animation: none; }
+    }
   </style>
   <!-- Bundled locally (OSMD 2.2.0, BSD-3-Clause, see LICENSE.txt) so the
        score renders without network access. -->
   <script src="opensheetmusicdisplay.min.js"></script>
+  <script src="score_timeline.js"></script>
 </head>
 <body>
   <div id="page"><div id="score"></div><svg id="ink" xmlns="http://www.w3.org/2000/svg"></svg></div>
   <script>
     // Bridge between Flutter (score_osmd_view.dart) and OSMD. Every message back to Flutter is
-    // JSON: {type: 'bridgeReady' | 'loaded' | 'error' | 'ink' | 'zoom', payload?: {...}}.
+    // JSON: {type: 'bridgeReady' | 'loaded' | 'timeline' | 'error' | 'ink' | 'zoom', payload?: {...}}.
     //
     // Pen ink lives here, inside the scrolled page, so it moves with the music. Each stroke is
     // pinned to the bar it starts on (its measure and staff), so when the music is laid out again
@@ -64,6 +86,7 @@
         osmd.render();
         boxes = null;
         drawInk();
+        applyLive();  // a new engraving: mark its notes again
       }
 
       var resizeTimer;
@@ -329,12 +352,147 @@
         return entries;
       }
 
+      // ── Live practice ─────────────────────────────────────────────────
+      // The app (score_practice_session.dart) says, by timeline note id, which
+      // notes were played right or wrong, which are due, and which were just
+      // played. Marks are kept here and applied to whatever is drawn, so they
+      // survive zooming and turning the phone (both draw the score again).
+      var timeline = null;        // ScoreTimeline.extract() of the loaded score
+      var marks = {};             // id -> 'right' | 'wrong'
+      var dueIds = [];
+      var following = false;
+      var lastTouch = 0;
+      var COLORS = { right: '#7CC59A', wrong: '#D9534F' };
+
+      function graphicOf(id) {
+        var source = timeline && timeline.sources[id];
+        if (!source) return null;
+        try { return osmd.EngravingRules.GNote(source) || null; } catch (e) { return null; }
+      }
+
+      // The note's own head. A chord draws all its heads in one VexFlow note,
+      // lowest first, so a chord member is picked by its rank in pitch.
+      function headsOf(g) {
+        var heads = g.getNoteheadSVGs ? g.getNoteheadSVGs() : [];
+        if (heads.length <= 1) return heads;
+        var pitches = ((g.parentVoiceEntry && g.parentVoiceEntry.notes) || [])
+          .map(function (n) { return n.sourceNote && n.sourceNote.halfTone; })
+          .filter(function (p) { return typeof p === 'number'; })
+          .sort(function (a, b) { return a - b; });
+        var rank = pitches.indexOf(g.sourceNote.halfTone);
+        return rank >= 0 && heads[rank] ? [heads[rank]] : heads;
+      }
+
+      function tint(el, color) {
+        var parts = [el].concat(Array.prototype.slice.call(el.querySelectorAll('*')));
+        parts.forEach(function (part) {
+          ['fill', 'stroke'].forEach(function (attr) {
+            var kept = 'data-hu-' + attr;
+            if (!part.hasAttribute(kept)) part.setAttribute(kept, part.getAttribute(attr) || '');
+            var original = part.getAttribute(kept);
+            if (color && (attr === 'fill' || (original && original !== 'none'))) part.setAttribute(attr, color);
+            else if (original) part.setAttribute(attr, original);
+            else part.removeAttribute(attr);
+          });
+        });
+      }
+
+      function paint(id, mark) {
+        var g = graphicOf(id);
+        if (!g) return;
+        headsOf(g).forEach(function (head) { tint(head, mark ? COLORS[mark] : null); });
+      }
+
+      function groupOf(id) {
+        var g = graphicOf(id);
+        return g && g.getSVGGElement ? g.getSVGGElement() : null;
+      }
+
+      function setDue(ids) {
+        dueIds.forEach(function (id) { var el = groupOf(id); if (el) el.classList.remove('hu-due'); });
+        dueIds = ids || [];
+        dueIds.forEach(function (id) {
+          // A repeat: the same written note again, so its first time's colour goes.
+          if (!marks[id]) paint(id, null);
+          var el = groupOf(id);
+          if (el && !el.classList.contains('hu-jump')) el.classList.add('hu-due');
+        });
+      }
+
+      function jump(id) {
+        var el = groupOf(id);
+        if (!el) return;
+        el.classList.remove('hu-due', 'hu-jump');
+        void el.getBoundingClientRect();  // restart the animation
+        el.classList.add('hu-jump');
+        el.addEventListener('animationend', function done() {
+          el.classList.remove('hu-jump');
+          el.removeEventListener('animationend', done);
+        });
+      }
+
+      // Keeps the next note to play in view, unless the player has just
+      // scrolled the page themselves.
+      function keepInView() {
+        if (!following || !dueIds.length || Date.now() - lastTouch < 4000) return;
+        var el = groupOf(dueIds[0]);
+        if (!el) return;
+        var r = el.getBoundingClientRect(), h = window.innerHeight;
+        if (r.top < h * 0.12 || r.bottom > h * 0.72) {
+          window.scrollTo({ top: window.scrollY + r.top - h * 0.3, behavior: 'smooth' });
+        }
+      }
+
+      function applyLive() {
+        if (!timeline) return;
+        Object.keys(marks).sort(function (a, b) { return a - b; }).forEach(function (id) { paint(+id, marks[id]); });
+        setDue(dueIds);
+      }
+
+      function postTimeline() {
+        try {
+          timeline = ScoreTimeline.extract(osmd);
+          post('timeline', {
+            notes: timeline.notes, bpm: timeline.bpm, timeSignature: timeline.timeSignature,
+            instrument: timeline.instrument, staves: timeline.staves,
+          });
+        } catch (e) {
+          timeline = null;
+          post('timeline', { notes: [], error: String(e && e.message || e) });
+        }
+      }
+
+      document.addEventListener('touchstart', function () { lastTouch = Date.now(); }, { passive: true });
+
       window.OSMDBridge = {
+        // update: {right: [ids], wrong: [ids], due: [ids] (omit to keep),
+        //          played: [ids], follow: bool}
+        live: function (update) {
+          if (!timeline) return;
+          (update.right || []).forEach(function (id) { marks[id] = 'right'; paint(id, 'right'); });
+          (update.wrong || []).forEach(function (id) { marks[id] = 'wrong'; paint(id, 'wrong'); });
+          if (typeof update.follow === 'boolean') following = update.follow;
+          if (update.due) setDue(update.due);
+          (update.played || []).forEach(jump);
+          keepInView();
+        },
+
+        // A new run: every note back to black, nothing due.
+        resetLive: function () {
+          var ids = Object.keys(marks);
+          marks = {};
+          ids.forEach(function (id) { paint(+id, null); });
+          setDue([]);
+        },
+
         loadScore: function (xml) {
           colored = [];
           loaded = false;
           strokes = [];
           undoStack = [];
+          timeline = null;
+          marks = {};
+          dueIds = [];
           drawInk();
           osmd.load(xml)
             .then(function () {
@@ -342,6 +500,7 @@
               fitZoom();
               render();
               post('loaded');
+              postTimeline();
             })
             .catch(function (e) { post('error', { message: String(e && e.message || e) }); });
         },

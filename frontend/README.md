@@ -50,10 +50,27 @@ This is the way to test with a real instrument today.
    with the pulsing dot.
 5. After each bar a feedback card appears and the companion reacts.
 
-Recording a **PDF score** is refused with a message for now. Rust needs the
-score's notes to listen for, and the backend step that reads notes off a
-PDF (`/api/score/process`) does not work yet. See `CHANGES.md` at the repo
-root.
+## Playing along with a score
+
+1. Pick a score from the library (Search), e.g. Für Elise.
+2. Tap the mic. The first time, choose a tempo (from the written one: Slow
+   60%, Steady 80%, As written) and, on a piano score, which hands. The chip
+   at the top of the score changes them later.
+3. A count-in of one bar follows. Start on the first note.
+4. As you play, each note turns **soft green** when it was right and **red**
+   when it was a wrong key, missed, or badly early or late. The notes due now
+   sway a little, and a note hops as it is heard. A line at the top says what
+   went wrong ("Played D instead of D♯ · bar 12"). The page scrolls to keep
+   the next note in view.
+5. Every few seconds the backend's verdict on the last phrase comes back as
+   the feedback card, and can turn more notes red.
+
+The score follows your tempo, so you don't have to keep the written one, and
+waits if you stop.
+
+Recording a **PDF score** is still refused: the backend step that reads notes
+off a PDF (`/api/score/process`) does not work yet. MusicXML scores from the
+library work.
 
 ## Folder layout
 
@@ -134,13 +151,20 @@ generator's. One bubble at a time pops up beside the note and dismisses
 itself, the notes keep a badge, and the speech-bubble button lists everything
 said this run.
 
-Not done, because the data doesn't exist yet: the same for a *score* (the
-OSMD view). Scores have no timeline: nothing turns a score's MusicXML into
-expected notes with times (see `CHANGES.md`), recording is refused without an
-exercise, and the generator is never given `bar_boxes`, so its findings have
-no position on a score. `ScoreOsmdController.colorNotes` can already colour a
-note by measure/voice/index; what is missing is the expected notes with their
-`NoteRef`s and times from the backend.
+For a *score*, the notes come from the score itself:
+`assets/osmd/score_timeline.js` reads them off OSMD's parsed score (repeats
+played out, ties joined, grace notes just before their note, timed at the
+written tempo, first instrument only) and the page posts them as a
+`timeline` message. Each note's id is its place in that timeline, which is
+how Rust, the backend and the page all refer to it.
+
+| File | Role |
+|---|---|
+| `features/practice/score_timeline.dart` | The timeline, laid out at a tempo for some hands. Bars are grouped into phrases of 4 s or more for the backend. |
+| `features/practice/score_practice_session.dart` | One run through a score: Rust (with `follow_tempo`), count-in, live judging, phrases to the backend. |
+| `features/practice/live_judge.dart` | Right or wrong per note, from Rust's records as they arrive; which notes are due; the backend's verdicts on top. |
+| `features/practice/score_practice_sheet.dart` | Tempo and hands. |
+| `assets/osmd/osmd_viewer.html` → `OSMDBridge.live` | Colours noteheads (a chord member by its rank in pitch), sways due notes, hops played ones, keeps the next note in view; all re-applied after every re-render (zoom, rotation). |
 
 The store-review URLs and support email are in `config/app_constants.dart`
 and can be set at build time, e.g.
@@ -234,5 +258,9 @@ The app logs with a `[Diagnostics]` prefix. The useful lines:
 ## Not done yet
 
 - PDF scores can't be recorded until `/api/score/process` works.
+- Playing along takes the first instrument of a score with several.
+- After a pause, or when a passage repeats one pitch fast, a few notes can
+  turn red that were played (see "Following the player" in
+  `native_ffi/README.md`).
 - macOS builds don't include the Rust engine.
 - The quiz needs one line added to `backend/api/urls.py` (see `CHANGES.md`).

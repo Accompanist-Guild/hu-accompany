@@ -24,6 +24,14 @@ class ExpectedNote {
   /// detects, which is how a finished phrase is recognised.
   final bool isEnd;
 
+  /// The bar number the score prints this note in (scores only). Sent to the
+  /// backend, so its findings name the bar the player sees.
+  final int? printedBar;
+
+  /// A grace note: written without time of its own, so missing it is not
+  /// held against the player.
+  final bool grace;
+
   const ExpectedNote({
     required this.noteId,
     required this.midi,
@@ -32,6 +40,8 @@ class ExpectedNote {
     required this.durationMs,
     required this.bar,
     required this.isEnd,
+    this.printedBar,
+    this.grace = false,
   });
 
   double get endMs => startMs + durationMs;
@@ -46,6 +56,7 @@ class ExpectedNote {
     'start_time_ms': startMs,
     'end_time_ms': endMs,
     'duration_ms': durationMs,
+    if (printedBar != null) 'bar': printedBar,
   };
 
   /// The shape of native_ffi's `Notes` struct, for `initSession`.

@@ -101,18 +101,9 @@ class _DiskDrawerState extends State<DiskDrawer>
     );
   }
 
-  /// Where each disk lies, as a fraction of the area they are scattered over
-  /// (left, top). A loose pile rather than a grid, so it reads as records
-  /// tipped out of the bar. Pages take them in this order, top to bottom.
-  static const List<Offset> _spots = [
-    Offset(0.42, 0.00),
-    Offset(0.12, 0.22),
-    Offset(0.76, 0.22),
-    Offset(0.30, 0.45),
-    Offset(0.68, 0.47),
-    Offset(0.10, 0.72),
-    Offset(0.55, 0.76),
-  ];
+  /// Disks per column. Pages fill the left column top to bottom, then the
+  /// right; a seventh sits in the middle of the bottom row.
+  static const int _perColumn = 3;
 
   Widget _scatter(BuildContext context) {
     final media = MediaQuery.of(context);
@@ -129,17 +120,28 @@ class _DiskDrawerState extends State<DiskDrawer>
     const itemWidth = 108.0;
     const labelHeight = 24.0;
     final areaHeight = bottom - top;
-    final disk = (areaHeight / 4.2).clamp(44.0, 72.0);
-    final areaWidth = screen.width - sideMargin * 2;
+    // Three rows, each a disk, its label and a gap.
+    final disk = (areaHeight / _perColumn - labelHeight - Space.xs).clamp(
+      44.0,
+      72.0,
+    );
+    final rowStep = (areaHeight - disk - labelHeight) / (_perColumn - 1);
+    final leftX = sideMargin + itemWidth / 2;
+    final rightX = screen.width - sideMargin - itemWidth / 2;
 
     return Stack(
       children: [
         for (var i = 0; i < diskPages.length; i++)
           () {
-            final spot = _spots[i];
-            final centerX =
-                sideMargin + disk / 2 + spot.dx * (areaWidth - disk);
-            final y = top + spot.dy * (areaHeight - disk - labelHeight);
+            final column = i ~/ _perColumn;
+            final row = i % _perColumn;
+            final centerX = switch (column) {
+              0 => leftX,
+              1 => rightX,
+              _ => screen.width / 2,
+            };
+            // The extra disk shares the bottom row.
+            final y = top + (column > 1 ? _perColumn - 1 : row) * rowStep;
             return Positioned(
               left: centerX - itemWidth / 2,
               top: y,

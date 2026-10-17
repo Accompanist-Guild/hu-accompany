@@ -54,6 +54,38 @@ pub const ATTACK_RATIO: f32 = 1.5;
 /// Notes starting within this long of the score's first note open the piece
 /// together (a chord, or a grace note): any of them may set the clock.
 const OPENING_GROUP_MS: f32 = 50.0;
+/// Following the player's tempo (NoteTracker::following): notes starting within
+/// this long of each other are one chord, so they say nothing about the tempo.
+const CHORD_MS: f32 = 50.0;
+/// How far the player's tempo may stray from the written one, as score ms per
+/// heard ms (0.5 = half the written tempo). Outside it a reading is a mistake
+/// (a skipped bar, a pause), not a tempo.
+const MIN_RATE: f32 = 0.5;
+const MAX_RATE: f32 = 2.0;
+/// The player's tempo is the slope of score time against heard time over the
+/// latest TEMPO_ONSETS onsets (at most TEMPO_SPAN_MS back), once there are
+/// TEMPO_MIN_ONSETS spread over TEMPO_MIN_SPAN_MS. A tempo is a trend over
+/// several notes: one onset-to-onset gap is mostly the detector's jitter
+/// (+-30 ms, on semiquavers of ~200 ms), and one late note is a late note.
+const TEMPO_ONSETS: usize = 12;
+const TEMPO_SPAN_MS: f32 = 5000.0;
+const TEMPO_MIN_ONSETS: usize = 4;
+const TEMPO_MIN_SPAN_MS: f32 = 600.0;
+/// Share of each new slope taken into the estimate.
+const RATE_SMOOTHING: f32 = 0.5;
+/// While the clock waits for a note that hasn't come, the next this many
+/// onsets (chords count once) beyond it are listened for too: the player may
+/// have played it unheard (or skipped it) and moved on, and must be found
+/// again where they are. Only the next few, in order: pieces repeat their
+/// pitches, and listening further on credits the player's notes to a later
+/// bar.
+const RECOVER_ONSETS: usize = 3;
+/// While following, a note is listened for this share of its written length
+/// before and after where it is due (between TIMING_MARGIN_MS and
+/// FOLLOW_MARGIN_MAX_MS): a crotchet at 60 bpm can come 180 ms late and still
+/// be that crotchet, a semiquaver can't.
+const FOLLOW_MARGIN_SHARE: f32 = 0.3;
+const FOLLOW_MARGIN_MAX_MS: f32 = 180.0;
 /// Heard frames from a note's first on, among which its start is stamped
 /// (Thresholds::edge_relative): ~185 ms of neural frames, enough for the
 /// attack to reach its peak.
@@ -88,6 +120,11 @@ pub struct Thresholds {
     /// Per-frame decay of the recent peak the end is measured against, so a note
     /// that dies away slowly is followed, and only a sharp drop (a release) ends it.
     pub peak_decay: f32,
+    /// Minimum Detection::confidence to start a note while the clock waits for
+    /// the player (see NoteTracker::following). Whatever is heard then decides
+    /// where they are, so it takes a clearer sound than usual: room noise in a
+    /// long pause must not move the score on without them.
+    pub recover_confidence: f32,
 }
 
 impl Thresholds {
@@ -104,6 +141,7 @@ impl Thresholds {
         sustain_confidence: 0.0,
         edge_relative: 0.0,
         peak_decay: 1.0,
+        recover_confidence: 0.0,
     };
     /// For run_onnx::neural_evidence. From the offline prototype: a note is
     /// there when its key reads >= 0.15 and >= 1.5x each non-expected
@@ -123,6 +161,7 @@ impl Thresholds {
         sustain_confidence: 0.1,
         edge_relative: 0.75,
         peak_decay: 0.984,
+        recover_confidence: 0.45,
     };
 }
 
@@ -170,6 +209,20 @@ struct Track {
     peak_confidence: f32,
     /// The first RISE_FRAMES heard frames of this candidate, with their confidence.
     rise: Vec<(Frame, f32)>,
+    /// When following: where the score was believed to be when this note
+    /// started (stream ms, score ms, rate), so its start is reported against
+    /// the tempo the player was keeping, before the clock moved to it.
+    started_at: Option<(f32, f32, f32)>,
+}
+
+/// The score clock while following the player (NoteTracker::following): score
+/// time = `anchor.1 + (stream - anchor.0) * rate`, never past `hold`.
+#[derive(Clone, Copy, Debug)]
+struct Follow {
+    /// Score ms per stream ms: the player's tempo against the written one.
+    rate: f32,
+    /// The latest heard onset, as (stream ms, score ms).
+    anchor: (f32, f32),
 }
 
 /// How the score's clock relates to the stream's (sample 0 = mic opened).
@@ -199,6 +252,20 @@ pub struct NoteTracker {
     tracks: HashMap<usize, Track>,
     th: Thresholds,
     clock: Clock,
+    /// Some when following the player's tempo; see `following`.
+    follow: Option<Follow>,
+    /// Per note: its start was heard.
+    heard: Vec<bool>,
+    /// Latest score start of a heard note: earlier notes not heard by then
+    /// were skipped, and the clock stops waiting for them.
+    latest_heard_ms: f32,
+    /// Following: recent onsets (stream ms, score ms) the tempo is read from.
+    onsets: Vec<(f32, f32)>,
+    /// Notes that started since the last take_started, in score time, with no end.
+    started_out: Vec<Notes>,
+    /// Stream-time span of the last record closed for each note id, for
+    /// callers that look its audio up (the volume).
+    spans: HashMap<u64, (f32, f32)>,
 }
 
 impl NoteTracker {
@@ -226,7 +293,38 @@ impl NoteTracker {
             }
         }
         let ended = vec![false; notes.len()];
-        Self { notes, handover_ms, predecessor, ended, tracks: HashMap::new(), th, clock: Clock::Stream }
+        let heard = vec![false; notes.len()];
+        Self {
+            notes,
+            handover_ms,
+            predecessor,
+            ended,
+            tracks: HashMap::new(),
+            th,
+            clock: Clock::Stream,
+            follow: None,
+            heard,
+            latest_heard_ms: f32::NEG_INFINITY,
+            onsets: Vec::new(),
+            started_out: Vec::new(),
+            spans: HashMap::new(),
+        }
+    }
+
+    /// Follows the player's tempo (on top of `anchored`). Without it the
+    /// score runs at the written tempo from the first note on, and a player
+    /// 5% slow is a semiquaver behind after a few bars, where nothing more
+    /// is recognised. Following, every heard onset moves the clock to that
+    /// note, and the tempo is re-estimated from the time between onsets.
+    /// Onsets are still reported against the tempo kept up to that note, so
+    /// a rushed or dragged note reads as one.
+    ///
+    /// The clock also waits for the player: it never runs past the end of
+    /// the earliest note neither heard nor skipped (a later note was heard),
+    /// so a pause doesn't run the score on without them.
+    pub fn following(mut self) -> Self {
+        self.follow = Some(Follow { rate: 1.0, anchor: (0.0, 0.0) });
+        self.anchored()
     }
 
     /// Starts the score's clock when the player's first note is heard instead
@@ -252,12 +350,88 @@ impl NoteTracker {
             .collect()
     }
 
-    /// Score time = stream time - this. Callers that look the audio up by stream time need it.
+    /// Score time = stream time - this (while not following the tempo).
     pub fn offset_ms(&self) -> f32 {
         match self.clock {
             Clock::Anchored { offset_ms, .. } => offset_ms,
             _ => 0.0,
         }
+    }
+
+    /// The score time at stream time `stream_ms`, as the clock stands now.
+    pub fn score_ms(&self, stream_ms: f32) -> f32 {
+        match (self.clock, self.follow) {
+            (Clock::Anchored { .. }, Some(_)) => self.projected_ms(stream_ms).min(self.hold_ms()),
+            _ => stream_ms - self.offset_ms(),
+        }
+    }
+
+    /// Following: where the player's tempo puts stream time `stream_ms`, without waiting for them.
+    fn projected_ms(&self, stream_ms: f32) -> f32 {
+        match self.follow {
+            Some(f) => f.anchor.1 + (stream_ms - f.anchor.0) * f.rate,
+            None => stream_ms - self.offset_ms(),
+        }
+    }
+
+    /// Following: the score time the clock waits at, the close of the window
+    /// of the earliest note neither heard nor skipped.
+    fn hold_ms(&self) -> f32 {
+        (0..self.notes.len())
+            .filter(|&i| !self.heard[i] && self.start_of(i) > self.latest_heard_ms - CHORD_MS)
+            .map(|i| self.window(i).1)
+            .fold(f32::INFINITY, f32::min)
+    }
+
+    /// Score start of the last of the next RECOVER_ONSETS unheard onsets after `score_ms`.
+    fn onsets_ahead(&self, score_ms: f32) -> f32 {
+        let mut groups = 0;
+        let mut group_start = f32::NEG_INFINITY;
+        for i in 0..self.notes.len() {
+            let start = self.start_of(i);
+            if start <= score_ms || self.heard[i] {
+                continue;
+            }
+            if start > group_start + CHORD_MS {
+                if groups == RECOVER_ONSETS {
+                    break;
+                }
+                groups += 1;
+                group_start = start;
+            }
+        }
+        group_start + CHORD_MS
+    }
+
+    fn start_of(&self, i: usize) -> f32 {
+        self.notes[i].start_time_ms.unwrap()
+    }
+
+    /// Pitches the score has sounding or due at score time `score_ms`, within
+    /// `margin_ms` either side, plus every note still being heard. Anything
+    /// else that sounds was not written there.
+    pub fn pitches_near(&self, score_ms: f32, margin_ms: f32) -> Vec<f64> {
+        (0..self.notes.len())
+            .filter(|&i| {
+                let n = &self.notes[i];
+                let start = self.start_of(i);
+                let end = n.end_time_ms.unwrap_or(start);
+                (start - margin_ms <= score_ms && score_ms <= end + margin_ms) || self.is_playing(i)
+            })
+            .map(|i| self.notes[i].pitch_hz)
+            .collect()
+    }
+
+    /// Notes heard starting since the last call, in score time (no end yet),
+    /// so a listener can show a note as soon as it is played instead of
+    /// only when it ends.
+    pub fn take_started(&mut self) -> Vec<Notes> {
+        std::mem::take(&mut self.started_out)
+    }
+
+    /// Stream-time span of the last record closed for `note_id`.
+    pub fn stream_span(&self, note_id: u64) -> Option<(f32, f32)> {
+        self.spans.get(&note_id).copied()
     }
 
     /// True once score time is known (always, unless waiting for the first note).
@@ -270,7 +444,12 @@ impl NoteTracker {
         let start = n.start_time_ms.unwrap();
         // No score end: listen for one margin's worth after the start.
         let end = n.end_time_ms.unwrap_or(start);
-        (start - TIMING_MARGIN_MS, end + TIMING_MARGIN_MS)
+        let margin = if self.follow.is_some() {
+            (FOLLOW_MARGIN_SHARE * (end - start)).clamp(TIMING_MARGIN_MS, FOLLOW_MARGIN_MAX_MS)
+        } else {
+            TIMING_MARGIN_MS
+        };
+        (start - margin, end + margin)
     }
 
     fn is_playing(&self, i: usize) -> bool {
@@ -288,12 +467,17 @@ impl NoteTracker {
         if self.clock == Clock::AwaitingFirstNote {
             return self.opening_notes();
         }
-        let now_ms = now_ms - self.offset_ms();
+        // Waiting for the player (see `following`): also listen a little further on.
+        let waiting = self.follow.is_some() && self.projected_ms(now_ms) > self.hold_ms();
+        let now_ms = self.score_ms(now_ms);
+        let ahead_until = if waiting { self.onsets_ahead(now_ms) } else { f32::NEG_INFINITY };
         (0..self.notes.len())
             .filter(|&i| {
                 let (open, close) = self.window(i);
                 let listening = open <= now_ms && now_ms <= close && now_ms < self.handover_ms[i];
-                listening || self.is_playing(i)
+                let start = self.start_of(i);
+                let ahead = !self.heard[i] && now_ms < start && start <= ahead_until;
+                listening || ahead || self.is_playing(i)
             })
             .collect()
     }
@@ -307,7 +491,7 @@ impl NoteTracker {
     /// on this frame, in score time.
     pub fn update(&mut self, frame: Frame, observations: &[(usize, Option<Detection>)]) -> Vec<Notes> {
         let awaiting = self.clock == Clock::AwaitingFirstNote;
-        let now_ms = frame.centre_ms() - self.offset_ms();
+        let now_ms = self.score_ms(frame.centre_ms());
         // How many notes the score says are sounding right now (no margin).
         // Before the clock is set, the opening notes are.
         let polyphony = observations
@@ -323,6 +507,8 @@ impl NoteTracker {
         let start_needed = if polyphony >= 2 { th.start_dominance_chord } else { th.start_dominance_single };
         let mut finished = Vec::new();
         let mut started = Vec::new();
+        // Following, and the clock is waiting for the player (see recover_confidence).
+        let waiting = !awaiting && self.follow.is_some() && self.projected_ms(frame.centre_ms()) > self.hold_ms();
         for &(i, evidence) in observations {
             let first_sight = !self.tracks.contains_key(&i);
             // Sound already present when listening starts is the earlier
@@ -345,6 +531,11 @@ impl NoteTracker {
             let needed = if playing { th.sustain_dominance } else { start_needed };
             let share_needed = if playing { 0.0 } else { th.start_share };
             let confidence_needed = if playing { th.sustain_confidence } else { th.start_confidence };
+            let confidence_needed = if !playing && waiting {
+                confidence_needed.max(th.recover_confidence)
+            } else {
+                confidence_needed
+            };
             let mut heard = evidence
                 .filter(|d| d.dominance >= needed && d.share >= share_needed && d.confidence >= confidence_needed)
                 .map(|d| d.pitch_hz);
@@ -404,6 +595,9 @@ impl NoteTracker {
             if let Some(&(i, heard_ms)) = started.iter().min_by(|a, b| a.1.total_cmp(&b.1)) {
                 let offset_ms = heard_ms - self.notes[i].start_time_ms.unwrap();
                 self.clock = Clock::Anchored { offset_ms, refine: (th.edge_relative > 0.0).then_some(i) };
+                if let Some(f) = self.follow.as_mut() {
+                    f.anchor = (heard_ms, self.notes[i].start_time_ms.unwrap());
+                }
             }
         } else if let Clock::Anchored { refine: Some(i), .. } = self.clock {
             // Once the first note's attack is over its start is known better.
@@ -414,6 +608,33 @@ impl NoteTracker {
                 self.clock = Clock::Anchored { offset_ms: offset_ms.unwrap_or(self.offset_ms()), refine: None };
             }
         }
+        // Onsets, in score order: report them, and move a following clock on.
+        started.sort_by(|a, b| self.start_of(a.0).total_cmp(&self.start_of(b.0)));
+        for &(i, start_ms) in &started {
+            let score_start = self.score_ms(start_ms);
+            let rate = self.follow.map_or(1.0, |f| f.rate);
+            if let Some(track) = self.tracks.get_mut(&i) {
+                track.started_at = Some((start_ms, score_start, rate));
+            }
+            self.follow_onset(i, start_ms);
+            self.heard[i] = true;
+            self.latest_heard_ms = self.latest_heard_ms.max(self.start_of(i));
+            let pitch_hz = self.tracks.get(&i).map_or(self.notes[i].pitch_hz, |t| median(&t.pitches));
+            let note = &self.notes[i];
+            self.started_out.push(Notes {
+                note_id: note.note_id,
+                pitch_hz,
+                start_time_ms: Some(score_start),
+                end_time_ms: None,
+                duration_ms: None,
+                is_end: note.is_end,
+                vibrato_depth: None,
+                pedal_action: None,
+                has_accent: None,
+                markings: None,
+                volume: None,
+            });
+        }
         // A re-attack ends the earlier same-pitch note(s) still ringing: the
         // string was struck again, at a moment we measured.
         for (i, start_ms) in started {
@@ -423,6 +644,32 @@ impl NoteTracker {
             }
         }
         finished
+    }
+
+    /// Following: note `i` was heard starting at stream time `heard_ms`. The
+    /// clock moves to it and the tempo estimate takes in the time since the
+    /// previous onset (not for a chord-mate, an earlier note heard late, or
+    /// after the clock had stopped to wait for the player).
+    fn follow_onset(&mut self, i: usize, heard_ms: f32) {
+        let Some(f) = self.follow else { return };
+        let start = self.start_of(i);
+        if start <= f.anchor.1 + CHORD_MS {
+            return;
+        }
+        // After a wait the time since the last onset includes the pause: the
+        // tempo is read afresh from here on.
+        if self.projected_ms(heard_ms) > self.hold_ms() {
+            self.onsets.clear();
+        }
+        self.onsets.push((heard_ms, start));
+        let keep_from = self.onsets.len().saturating_sub(TEMPO_ONSETS);
+        self.onsets.drain(..keep_from);
+        self.onsets.retain(|&(t, _)| t >= heard_ms - TEMPO_SPAN_MS);
+        let mut rate = f.rate;
+        if let Some(slope) = slope(&self.onsets) {
+            rate += RATE_SMOOTHING * (slope.clamp(MIN_RATE, MAX_RATE) - rate);
+        }
+        self.follow = Some(Follow { rate, anchor: (heard_ms, start) });
     }
 
     /// Where a note started (stream time): the first frame at `edge_relative`
@@ -456,7 +703,6 @@ impl NoteTracker {
         self.ended[i] = true;
         let ended = track.weak_since.filter(|w| w.start_ms < ended.start_ms).unwrap_or(ended);
         let start_ms = self.onset_ms(&track, start_ms);
-        let offset = self.offset_ms();
         let mut end_ms = ended.start_ms;
         let mut start_ms = start_ms;
         if end_ms <= start_ms {
@@ -469,15 +715,25 @@ impl NoteTracker {
                 return None;
             }
         }
-        let mut pitches = track.pitches;
-        pitches.sort_by(f64::total_cmp);
+        let (score_start, score_end) = match (self.follow, track.started_at) {
+            // Following: the start against the tempo kept up to it, the end
+            // where the tempo (now) puts it, and never before the start.
+            // (The clock moves by unrefined onsets, so the start is read at the
+            // unrefined one too; refining it would add the attack's rise to every note.)
+            (Some(_), Some((at_stream, at_score, _))) => {
+                let end = self.projected_ms(end_ms).max(at_score + (end_ms - at_stream.max(start_ms)) * MIN_RATE);
+                (at_score, end)
+            }
+            _ => (start_ms - self.offset_ms(), end_ms - self.offset_ms()),
+        };
         let note = &self.notes[i];
+        self.spans.insert(note.note_id, (start_ms, end_ms));
         Some(Notes {
             note_id: note.note_id,
-            pitch_hz: pitches[pitches.len() / 2], // median: robust to attack transients
-            start_time_ms: Some(start_ms - offset),
-            end_time_ms: Some(end_ms - offset),
-            duration_ms: Some(end_ms - start_ms),
+            pitch_hz: median(&track.pitches), // median: robust to attack transients
+            start_time_ms: Some(score_start),
+            end_time_ms: Some(score_end),
+            duration_ms: Some(score_end - score_start),
             is_end: note.is_end,
             vibrato_depth: None,
             pedal_action: None,
@@ -486,6 +742,29 @@ impl NoteTracker {
             volume: None,
         })
     }
+}
+
+/// Least-squares slope of score time against stream time, if the points are
+/// enough and spread enough to read a tempo from.
+fn slope(points: &[(f32, f32)]) -> Option<f32> {
+    if points.len() < TEMPO_MIN_ONSETS {
+        return None;
+    }
+    let (first, last) = (points.first()?.0, points.last()?.0);
+    if last - first < TEMPO_MIN_SPAN_MS {
+        return None;
+    }
+    let n = points.len() as f32;
+    let (mx, my) = points.iter().fold((0.0, 0.0), |(x, y), p| (x + p.0 / n, y + p.1 / n));
+    let (sxy, sxx) = points.iter().fold((0.0, 0.0), |(xy, xx), p| (xy + (p.0 - mx) * (p.1 - my), xx + (p.0 - mx).powi(2)));
+    (sxx > 0.0).then(|| sxy / sxx)
+}
+
+/// Median of what was heard (0 for nothing).
+fn median(values: &[f64]) -> f64 {
+    let mut sorted = values.to_vec();
+    sorted.sort_by(f64::total_cmp);
+    sorted.get(sorted.len() / 2).copied().unwrap_or(0.0)
 }
 
 #[cfg(test)]
@@ -963,5 +1242,107 @@ mod tests {
     fn test_anchored_finish_before_any_note_is_heard_reports_nothing() {
         let mut tr = NoteTracker::new(&three_notes()).anchored();
         assert!(tr.finish(3000.0).is_empty());
+    }
+
+    // --- Following the player's tempo (NoteTracker::following) ---
+
+    /// A line of `count` notes `len_ms` long from score time 0, with no two
+    /// neighbours of the same pitch.
+    fn line(count: usize, len_ms: f32) -> Vec<Notes> {
+        let pitches = [440.0, 493.88, 554.37, 587.33];
+        (0..count).map(|i| note(i as u64 + 1, pitches[i % 4], i as f32 * len_ms, (i + 1) as f32 * len_ms)).collect()
+    }
+
+    /// Plays note i from stream time `onsets[i]` for `hold_ms` (None = not played).
+    fn perform(tr: &mut NoteTracker, onsets: &[Option<f32>], hold_ms: f32, to_ms: f32) -> Vec<Notes> {
+        let mut out = run(tr, 0.0, to_ms, |i, t| onsets[i].is_some_and(|on| (on..on + hold_ms).contains(&t)));
+        out.extend(tr.finish(to_ms));
+        out
+    }
+
+    fn found(out: &[Notes]) -> Vec<u64> {
+        let mut ids: Vec<u64> = out.iter().map(|n| n.note_id).collect();
+        ids.sort();
+        ids
+    }
+
+    #[test]
+    fn test_following_keeps_up_with_a_player_slower_than_written() {
+        // 16 notes written 500 ms apart, played 625 ms apart (80% tempo).
+        let notes = line(16, 500.0);
+        let onsets: Vec<Option<f32>> = (0..16).map(|i| Some(300.0 + i as f32 * 625.0)).collect();
+        let strict = perform(&mut NoteTracker::new(&notes).anchored(), &onsets, 550.0, 11_000.0);
+        assert!(strict.len() < 8, "the written tempo loses a slow player: {strict:?}");
+
+        let out = perform(&mut NoteTracker::new(&notes).following(), &onsets, 550.0, 11_000.0);
+        assert_eq!(found(&out), (1..=16).collect::<Vec<_>>(), "{out:?}");
+        // Once the tempo is learned, onsets are reported where they belong.
+        for n in out.iter().filter(|n| n.note_id >= 10) {
+            let written = (n.note_id - 1) as f32 * 500.0;
+            assert!((n.start_time_ms.unwrap() - written).abs() < 40.0, "{n:?}");
+        }
+    }
+
+    #[test]
+    fn test_following_keeps_up_with_a_player_faster_than_written() {
+        let notes = line(16, 500.0);
+        let onsets: Vec<Option<f32>> = (0..16).map(|i| Some(300.0 + i as f32 * 420.0)).collect();
+        let out = perform(&mut NoteTracker::new(&notes).following(), &onsets, 380.0, 9000.0);
+        assert_eq!(found(&out), (1..=16).collect::<Vec<_>>(), "{out:?}");
+    }
+
+    #[test]
+    fn test_following_waits_while_the_player_pauses() {
+        // Notes 1-6 in time, then a 3 s pause, then 7-12 in time.
+        let notes = line(12, 500.0);
+        let onsets: Vec<Option<f32>> =
+            (0..12).map(|i| Some(200.0 + i as f32 * 500.0 + if i >= 6 { 3000.0 } else { 0.0 })).collect();
+        let out = perform(&mut NoteTracker::new(&notes).following(), &onsets, 450.0, 11_000.0);
+        assert_eq!(found(&out), (1..=12).collect::<Vec<_>>(), "{out:?}");
+        // After the pause the player is followed from where they picked up.
+        for n in out.iter().filter(|n| n.note_id >= 8) {
+            let written = (n.note_id - 1) as f32 * 500.0;
+            assert!((n.start_time_ms.unwrap() - written).abs() < 40.0, "{n:?}");
+        }
+    }
+
+    #[test]
+    fn test_following_moves_on_past_a_skipped_note() {
+        let notes = line(10, 500.0);
+        let onsets: Vec<Option<f32>> = (0..10).map(|i| (i != 4).then_some(200.0 + i as f32 * 500.0)).collect();
+        let out = perform(&mut NoteTracker::new(&notes).following(), &onsets, 450.0, 6000.0);
+        assert_eq!(found(&out), vec![1, 2, 3, 4, 6, 7, 8, 9, 10], "{out:?}");
+    }
+
+    #[test]
+    fn test_following_still_reports_a_rushed_note_as_early() {
+        let notes = line(10, 500.0);
+        let onsets: Vec<Option<f32>> =
+            (0..10).map(|i| Some(200.0 + i as f32 * 500.0 - if i == 6 { 70.0 } else { 0.0 })).collect();
+        let out = perform(&mut NoteTracker::new(&notes).following(), &onsets, 400.0, 6000.0);
+        let seventh = out.iter().find(|n| n.note_id == 7).expect("note 7 found");
+        assert!((seventh.start_time_ms.unwrap() - (3000.0 - 70.0)).abs() < 10.0, "{seventh:?}");
+    }
+
+    #[test]
+    fn test_onsets_are_reported_as_soon_as_a_note_starts() {
+        let notes = line(3, 500.0);
+        let mut tr = NoteTracker::new(&notes).following();
+        // Note 1 starts at stream 700 and is still sounding at 900.
+        run(&mut tr, 0.0, 900.0, |i, t| i == 0 && t >= 700.0);
+        let started = tr.take_started();
+        assert_eq!(started.len(), 1, "{started:?}");
+        assert_eq!(started[0].note_id, 1);
+        assert_eq!(started[0].start_time_ms, Some(0.0));
+        assert_eq!(started[0].end_time_ms, None);
+        assert!(tr.take_started().is_empty(), "taken once");
+    }
+
+    #[test]
+    fn test_pitches_near_lists_what_is_due_and_what_still_sounds() {
+        let notes = line(4, 500.0);
+        let tr = NoteTracker::new(&notes);
+        let near = tr.pitches_near(1000.0, 100.0);
+        assert_eq!(near, vec![493.88, 554.37], "note 2 ends and note 3 starts at 1000");
     }
 }

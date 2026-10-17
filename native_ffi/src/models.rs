@@ -58,6 +58,12 @@ pub struct PieceData {
     pub curr_music_phrase: u32,
     pub timing: TimingSpecs,
     pub notes: Vec<Notes>,
+    /// Follow the player's tempo instead of holding them to the written one
+    /// (tracker::NoteTracker::following). For whole pieces, where nobody
+    /// keeps a metronome's time for minutes; the short exercises leave it
+    /// off and are judged against their exact tempo. Optional in the JSON.
+    #[serde(default)]
+    pub follow_tempo: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
