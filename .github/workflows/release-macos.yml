@@ -1,0 +1,135 @@
+name: Release macOS
+
+# Push a tag like v0.1.0 to publish a GitHub Release with the macOS app attached.
+# "Run workflow" (manual) builds the same thing but only keeps it as a download on the run page, so you can try
+# the pipeline without publishing anything.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: verify
+    runs-on: macos-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write # to create the release and attach files
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.2
+          channel: stable
+          cache: true
+
+      # The audio engine (native_ffi) is compiled during the app build, once for each kind of Mac.
+      - name: Add the Rust targets for Intel and Apple silicon Macs
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Work out the version
+        id: version
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            # Manual run: take the number from pubspec.yaml ("0.1.0+1" -> "0.1.0").
+            version="$(sed -n 's/^version: *\([0-9.]*\).*/\1/p' frontend/pubspec.yaml)"
+          fi
+          # The version ends up in file names and shell commands below, so refuse anything but plain 1.2.3 (or
+          # 1.2.3-beta.1) rather than trust whatever the tag was called.
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::'$version' is not a version like 1.2.3 or 1.2.3-beta.1"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build the app
+        working-directory: frontend
+        env:
+          # Set these under Settings > Secrets and variables > Actions > Variables. Left unset, the app keeps its
+          # built-in placeholder addresses (see lib/config/app_constants.dart).
+          PRIVACY_POLICY_URL: ${{ vars.PRIVACY_POLICY_URL }}
+          TERMS_OF_SERVICE_URL: ${{ vars.TERMS_OF_SERVICE_URL }}
+          SUPPORT_EMAIL: ${{ vars.SUPPORT_EMAIL }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          flutter pub get
+          defines=()
+          # An empty --dart-define would replace the default with "", so only pass the ones that are set.
+          for name in PRIVACY_POLICY_URL TERMS_OF_SERVICE_URL SUPPORT_EMAIL; do
+            if [ -n "${!name}" ]; then defines+=("--dart-define=$name=${!name}"); fi
+          done
+          flutter build macos --release \
+            --build-name="$VERSION" \
+            --build-number="$GITHUB_RUN_NUMBER" \
+            "${defines[@]}"
+
+      - name: Package the .dmg
+        id: package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          dmg="HuAccomponist-$VERSION-macos.dmg"
+          scripts/package_macos_dmg.sh frontend/build/macos/Build/Products/Release/hu_accomponist.app "$dmg"
+          echo "dmg=$dmg" >> "$GITHUB_OUTPUT"
+
+      - name: Check the packaged app
+        env:
+          DMG: ${{ steps.package.outputs.dmg }}
+        run: |
+          mount="$(hdiutil attach -nobrowse -readonly "$DMG" | tail -1 | awk -F'\t' '{print $NF}')"
+          app="$mount/hu_accomponist.app"
+
+          # Cheap, exact checks first: signature intact, both Mac CPU types present, and the microphone permission
+          # reached the signed app (without it, recording fails silently in the sandbox).
+          codesign --verify --deep --strict "$app"
+          archs="$(lipo -archs "$app/Contents/MacOS/hu_accomponist")"
+          case "$archs" in *arm64*x86_64*|*x86_64*arm64*) ;; *) echo "::error::Not a universal build: $archs"; exit 1 ;; esac
+          codesign -d --entitlements - "$app" 2>&1 | grep -q 'com.apple.security.device.audio-input' \
+            || { echo "::error::Microphone entitlement missing from the built app"; exit 1; }
+          /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Contents/Info.plist" >/dev/null
+
+          # Then start it, make sure it is still running a few seconds later, and that it found the Rust audio
+          # engine (the app logs "rust: bridge initialized" when it does, "bridge unavailable" when it doesn't).
+          log="$RUNNER_TEMP/app.log"
+          "$app/Contents/MacOS/hu_accomponist" > "$log" 2>&1 &
+          pid=$!
+          sleep 10
+          if ! kill -0 "$pid" 2>/dev/null; then
+            echo "::error::The app exited within 10 seconds of starting"
+            cat "$log"
+            exit 1
+          fi
+          kill "$pid"
+          hdiutil detach -quiet "$mount"
+          grep -q 'rust: bridge initialized' "$log" || { echo "::error::The Rust audio engine was not found in the app"; cat "$log"; exit 1; }
+
+      - name: Keep the files on the run page
+        uses: actions/upload-artifact@v7
+        with:
+          name: HuAccomponist-macos
+          path: |
+            ${{ steps.package.outputs.dmg }}
+            ${{ steps.package.outputs.dmg }}.sha256
+
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          DMG: ${{ steps.package.outputs.dmg }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Re-running a tag's workflow replaces the files instead of failing.
+            gh release upload "$TAG" "$DMG" "$DMG.sha256" --clobber
+          else
+            gh release create "$TAG" "$DMG" "$DMG.sha256" \
+              --title "Hu Accomponist $TAG" \
+              --notes-file .github/release-notes-macos.md \
+              --generate-notes
+          fi

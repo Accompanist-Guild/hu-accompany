@@ -19,10 +19,13 @@ import 'package:hu_accomponist/src/rust/frb_generated.dart';
 /// `ExternalLibrary.process()` looks the symbols up in the current process,
 /// which is the correct strategy for static linking.
 ///
-/// Other platforms keep the generated default. Note that macOS does not link
-/// the Rust library at all — its Xcode project has no reference to any of the
-/// `libnative_ffi*.a` files — so initialization is expected to fail there and
-/// anything Rust-backed is unavailable on that target.
+/// macOS does the same, but gets the library differently: the `rust_builder`
+/// plugin (cargokit) compiles `native_ffi` during the Xcode build and links it
+/// into the app, so there is no prebuilt file to commit.
+///
+/// Other platforms keep the generated default, which looks for a dynamic
+/// library that those builds don't have, so initialization is expected to fail
+/// there and anything Rust-backed is unavailable.
 abstract final class RustBridge {
   static bool _initialized = false;
   static bool _available = false;
@@ -38,7 +41,7 @@ abstract final class RustBridge {
     _initialized = true;
 
     try {
-      if (Platform.isIOS) {
+      if (Platform.isIOS || Platform.isMacOS) {
         await RustLib.init(
           externalLibrary: ExternalLibrary.process(iKnowHowToUseIt: true),
         );

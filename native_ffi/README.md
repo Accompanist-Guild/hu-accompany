@@ -369,8 +369,11 @@ flutter_rust_bridge is now pinned to **2.13.0** on both sides
 (`Cargo.toml` and `frontend/pubspec.yaml`). The installed code generator was
 2.13, and it bumps both pins from 2.12.0 when it runs.
 
-macOS builds do not link this library at all, so Rust features are
-unavailable there.
+macOS builds it as part of the app build: `frontend/rust_builder` (cargokit)
+compiles this crate for Apple silicon and Intel and links it into the app, and
+`RustBridge` looks the symbols up in the running process, as on iOS. It needs
+both Rust targets installed: `rustup target add aarch64-apple-darwin
+x86_64-apple-darwin`.
 
 ## Known limitations
 
