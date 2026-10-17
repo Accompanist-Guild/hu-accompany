@@ -39,9 +39,9 @@ Django backend for hu-accompany.
 
 - **`docker-compose.yml`** — Local PostgreSQL (and MinIO) services for development.
 
-- **`pyproject.toml`** / **`uv.lock`** — Project metadata and the locked dependency set (managed with `uv`).
+- **`pyproject.toml`** — Project metadata only. It has no dependency list on purpose: `requirements.txt` is the one list (see the comment in the file).
 
-- **`requirements.txt`** — Pinned Python dependencies for `pip`-based installs.
+- **`requirements.txt`** — The Python dependencies. Install with `pip install -r requirements.txt`, then `pip install --no-deps basic-pitch`. `requirements-prod.txt` is the slimmer list the Docker image uses.
 
 - **`pytest.ini`** — Pytest config for the framework-free `hum/` engine tests.
 
