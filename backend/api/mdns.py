@@ -30,6 +30,17 @@ def _local_ip() -> str:
         s.close()
 
 
+def server_name(hostname: str) -> str:
+    """The host name to announce: `<name>.local.`, with `.local` there exactly once.
+
+    macOS already reports its host name as `<name>.local`; adding `.local.` to that announced
+    `<name>.local.local.`, a name that resolves nowhere, so the app could find the server but not reach it.
+    """
+    if hostname.lower().endswith(".local"):
+        hostname = hostname[: -len(".local")]
+    return f"{hostname}.local."
+
+
 def start(port: int = 8000) -> None:
     global _zeroconf
     if _zeroconf is not None:
@@ -42,7 +53,7 @@ def start(port: int = 8000) -> None:
         addresses=[socket.inet_aton(ip)],
         port=port,
         properties={},
-        server=f"{socket.gethostname()}.local.",
+        server=server_name(socket.gethostname()),
     )
 
     # Scoped to just the LAN-facing interface: binding "all interfaces"
