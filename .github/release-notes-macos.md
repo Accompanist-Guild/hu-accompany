@@ -11,7 +11,7 @@ To check your download wasn't damaged, put the `.sha256` file beside the `.dmg` 
 ## What works in this build
 
 - Hum mode, the shelf, the library and the quiz.
-- **Practice feedback from a real instrument is not available on macOS yet.** The audio engine is not part of the Mac app. It works in the iPhone build.
+- Practice feedback from a real instrument. It listens through the microphone, so allow the microphone when macOS asks.
 - Hum mode and the library need the Hu Accompany server; without it they show a "could not find the server" message.
 
 ---
