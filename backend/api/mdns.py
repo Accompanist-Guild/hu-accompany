@@ -30,6 +30,17 @@ def _local_ip() -> str:
         s.close()
 
 
+def server_name(hostname: str) -> str:
+    """The host name to announce: `<name>.local.`, with `.local` there exactly once.
+
+    macOS already reports its host name as `<name>.local`; adding `.local.` to that announced
+    `<name>.local.local.`, a name that resolves nowhere, so the app could find the server but not reach it.
+    """
+    if hostname.lower().endswith(".local"):
+        hostname = hostname[: -len(".local")]
+    return f"{hostname}.local."
+
+
 def start(port: int = 8000) -> None:
     global _zeroconf
     if _zeroconf is not None:
@@ -42,7 +53,7 @@ def start(port: int = 8000) -> None:
         addresses=[socket.inet_aton(ip)],
         port=port,
         properties={},
-        server=f"{socket.gethostname()}.local.",
+        server=server_name(socket.gethostname()),
     )
 
     # Scoped to just the LAN-facing interface: binding "all interfaces"
@@ -50,7 +61,10 @@ def start(port: int = 8000) -> None:
     # collides with other local mDNS responders (e.g. Lima, Chrome) that
     # already hold port 5353 there.
     _zeroconf = Zeroconf(interfaces=[ip])
-    _zeroconf.register_service(info)
+    # allow_name_change: if another server (or an announcement that hasn't expired yet) already holds this name,
+    # zeroconf picks "name (2)" instead of raising NonUniqueNameException and taking Django down with it. The app
+    # finds the server by its service type, so the name itself doesn't matter.
+    _zeroconf.register_service(info, allow_name_change=True)
     atexit.register(stop)
 
 

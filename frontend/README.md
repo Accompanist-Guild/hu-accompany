@@ -257,6 +257,10 @@ The app logs with a `[Diagnostics]` prefix. The useful lines:
 
 ## Not done yet
 
+- Reading scores from PDFs (OMR) doesn't work and is out of scope for now: the
+  priority is MusicXML scores (see `CHANGES.md`).
+- macOS builds don't include the Rust engine, so real-instrument practice
+  feedback is off on the Mac app. The iPhone build has it.
 - PDF scores can't be recorded until `/api/score/process` works.
 - Playing along takes the first instrument of a score with several.
 - After a pause, or when a passage repeats one pitch fast, a few notes can
