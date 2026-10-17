@@ -233,6 +233,8 @@ The app logs with a `[Diagnostics]` prefix. The useful lines:
 
 ## Not done yet
 
-- PDF scores can't be recorded until `/api/score/process` works.
-- macOS builds don't include the Rust engine.
-- The quiz needs one line added to `backend/api/urls.py` (see `CHANGES.md`).
+- PDF scores can't be recorded: the score-reading (OMR) pipeline in `backend/` is
+  broken and deliberately left for later (see `CHANGES.md`). Only the built-in
+  exercises work.
+- macOS builds don't include the Rust engine, so real-instrument practice
+  feedback is off on the Mac app. The iPhone build has it.
