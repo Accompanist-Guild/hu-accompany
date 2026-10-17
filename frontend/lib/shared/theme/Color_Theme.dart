@@ -68,6 +68,13 @@ abstract final class PracticePalette {
   /// "keep going" rather than as either praise or a fault.
   static const Color caution = Color(0xFFB1844D);
 
+  /// A note on the score played right: a light, soft green, so a page of
+  /// them reads as calm rather than loud.
+  static const Color noteRight = Color(0xFF7CC59A);
+
+  /// A note on the score played wrong (wrong key, missed, badly out of time).
+  static const Color noteWrong = Color(0xFFD9534F);
+
   static const List<Color> penColors = [
     gold,
     brown,

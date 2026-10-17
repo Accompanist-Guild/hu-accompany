@@ -1,0 +1,120 @@
+{
+  "piece": {
+    "title": "C major scale",
+    "composer": "Exercise",
+    "composed_date": ""
+  },
+  "recorded_at": "2026-10-14T16:51:12.303549+00:00",
+  "phrase": 1,
+  "bpm": 60.0,
+  "time_signature": "4/4",
+  "bars": [
+    1,
+    1
+  ],
+  "scores": {
+    "overall": 5,
+    "pitch": 2,
+    "rhythm": 8,
+    "tempo": null,
+    "dynamics": null,
+    "articulation": null,
+    "notes": null,
+    "pedaling": null
+  },
+  "feedback": [
+    {
+      "bars": 1,
+      "category": "pitch",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "Wrong note \u2014 you played C5 instead of D5.",
+      "details": {
+        "note_id": 2,
+        "cents": -186.7,
+        "expected_hz": 587.3295358348151,
+        "user_hz": 527.2805418753898,
+        "expected_note": "D5",
+        "user_note": "C5",
+        "suggestion": "Practice this transition slowly and focus on the correct note."
+      },
+      "box": null
+    },
+    {
+      "bars": 1,
+      "category": "rhythm",
+      "severity": "minor",
+      "confidence": 0.68,
+      "message": "This note came in early, disrupting the rhythm.",
+      "details": {
+        "note_id": 2,
+        "issue": "onset",
+        "diff_ms": -245.4,
+        "direction": "early",
+        "suggestion": "Practice this passage with a metronome, focusing on landing the note exactly on the beat."
+      },
+      "box": null
+    },
+    {
+      "bars": 1,
+      "category": "rhythm",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "This note was cut short compared to what's written.",
+      "details": {
+        "note_id": 2,
+        "issue": "duration",
+        "diff_ms": -767.8,
+        "pct": 0.768,
+        "direction": "too_short",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 1,
+      "category": "notes",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "This note was not played.",
+      "details": {
+        "note_id": 1,
+        "issue": "missing_note",
+        "expected_hz": 523.2511306011972,
+        "expected_note": "C5",
+        "suggestion": "Go through this passage slowly, note-by-note, to make sure this note is included."
+      },
+      "box": null
+    },
+    {
+      "bars": 1,
+      "category": "notes",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "This note was not played.",
+      "details": {
+        "note_id": 3,
+        "issue": "missing_note",
+        "expected_hz": 659.2551138257398,
+        "expected_note": "E5",
+        "suggestion": "Go through this passage slowly, note-by-note, to make sure this note is included."
+      },
+      "box": null
+    },
+    {
+      "bars": 1,
+      "category": "notes",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "This note was not played.",
+      "details": {
+        "note_id": 4,
+        "issue": "missing_note",
+        "expected_hz": 698.4564628660078,
+        "expected_note": "F5",
+        "suggestion": "Go through this passage slowly, note-by-note, to make sure this note is included."
+      },
+      "box": null
+    }
+  ]
+}

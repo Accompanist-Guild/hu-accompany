@@ -29,6 +29,16 @@ pub fn load_wav_mono(path: &str) -> (Vec<f32>, hound::WavSpec) {
 /// chunks, and returns every record the detector produced.
 /// Uses the ACTIVE_PIECE / USER_DATA globals, so callers must not overlap.
 pub fn run_pipeline(mono: &[f32], sample_rate: u32, piece: &PieceData) -> Vec<Notes> {
+    // Finished records of score notes: notes are also sent as they start
+    // (no end yet), and wrong keys as note_id 0 (see stray.rs).
+    let all = run_pipeline_raw(mono, sample_rate, piece);
+    all.into_iter().filter(|n| n.end_time_ms.is_some() && n.note_id != 0).collect()
+}
+
+/// Like `run_pipeline`, but returns everything sent, in order: onsets (no
+/// end), finished notes, and wrong keys (note_id 0).
+#[allow(dead_code)]
+pub fn run_pipeline_raw(mono: &[f32], sample_rate: u32, piece: &PieceData) -> Vec<Notes> {
     // NOTE_TEMPLATES=path/to/templates.json: run calibrated (see learn_templates).
     *native_ffi::NOTE_TEMPLATES.lock().unwrap() = std::env::var("NOTE_TEMPLATES").ok().filter(|p| !p.is_empty()).map(|p| {
         serde_json::from_str(&std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("NOTE_TEMPLATES {p}: {e}")))

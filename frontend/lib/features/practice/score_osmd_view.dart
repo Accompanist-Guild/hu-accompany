@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import 'package:hu_accomponist/features/practice/live_judge.dart';
+import 'package:hu_accomponist/features/practice/score_timeline.dart';
+
 /// Points at one specific note inside the score — zero-based measure,
 /// voice-entry, and note-within-that-voice-entry index, in the same order
 /// the notes appear in the source MusicXML. This is how "this note was
@@ -47,6 +50,11 @@ class ScoreOsmdController {
   /// Called with the score's strokes (JSON) whenever the ink changes, so
   /// they can be kept for next time.
   void Function(String strokesJson)? onInkChanged;
+
+  /// Called once a loaded score's notes have been read off it (see
+  /// `assets/osmd/score_timeline.js`): what there is to play, and when. An
+  /// empty timeline means the score has no notes this app can follow.
+  void Function(ScoreTimeline timeline)? onTimeline;
 
   /// The ink the next loaded score starts with (see [setInk]).
   String _inkJson = '[]';
@@ -130,6 +138,32 @@ class ScoreOsmdController {
   Future<void> resetColors() async {
     _call('OSMDBridge.resetColors();');
   }
+
+  /// Shows what is happening as the score is played: notes played right
+  /// (soft green) or wrong (red), the notes due now (they sway), and the
+  /// notes just played (they hop). Notes are timeline ids. [follow] keeps the
+  /// next note in view while a recording runs.
+  void live(LiveUpdate update, {bool? follow}) {
+    final right = [
+      for (final e in update.marks.entries)
+        if (e.value == NoteMark.right) e.key,
+    ];
+    final wrong = [
+      for (final e in update.marks.entries)
+        if (e.value == NoteMark.wrong) e.key,
+    ];
+    final payload = jsonEncode({
+      if (right.isNotEmpty) 'right': right,
+      if (wrong.isNotEmpty) 'wrong': wrong,
+      'due': ?update.due,
+      if (update.played.isNotEmpty) 'played': update.played,
+      'follow': ?follow,
+    });
+    _call('OSMDBridge.live($payload);');
+  }
+
+  /// Every note back to plain, for a new run.
+  void resetLive() => _call('OSMDBridge.resetLive();');
 }
 
 /// Renders MusicXML with OpenSheetMusicDisplay inside a WebView. OSMD owns
@@ -216,6 +250,20 @@ class _ScoreOsmdViewState extends State<ScoreOsmdView> {
         break;
       case 'loaded':
         if (mounted) setState(() => _loading = false);
+        break;
+      case 'timeline':
+        final payload = data['payload'] as Map<String, dynamic>? ?? const {};
+        if (payload['error'] != null) {
+          debugPrint(
+            '[Diagnostics] score: could not read its notes — ${payload['error']}',
+          );
+        }
+        final timeline = ScoreTimeline.fromJson(payload);
+        debugPrint(
+          '[Diagnostics] score: ${timeline.notes.length} notes to follow, '
+          '${timeline.bpm} bpm, ${timeline.timeSignature}',
+        );
+        widget.controller.onTimeline?.call(timeline);
         break;
       case 'ink':
         widget.controller._inkMessage(data['payload'] as Map<String, dynamic>?);

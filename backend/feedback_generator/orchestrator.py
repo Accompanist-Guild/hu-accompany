@@ -24,13 +24,13 @@ from .judges import (
     ExpectedNote,
     PhraseContext,
     UserNote,
-    bar_of,
     bar_span,
     beats_per_bar,
     hz_to_cents,
     overall_score,
     phase1_judges,
     phase2_judges,
+    printed_bars_of,
 )
 from .summarizer import build_piece_context, summarize
 
@@ -43,7 +43,17 @@ WINDOW_FRACTION_OF_BEAT = 0.5
 
 # --- Request parsing ----------------------------------------------------------
 
+def _parse_bar(raw: dict) -> Optional[int]:
+    bar = raw.get("bar")
+    if bar is None:
+        return None
+    if not isinstance(bar, int) or isinstance(bar, bool) or bar < 0:
+        raise InvalidNoteData(f"expected note has an invalid bar: {bar!r}")
+    return bar
+
+
 def _parse_expected_note(raw: dict) -> ExpectedNote:
+    bar = _parse_bar(raw)
     try:
         return ExpectedNote(
             note_id=raw["note_id"],
@@ -55,6 +65,7 @@ def _parse_expected_note(raw: dict) -> ExpectedNote:
             pedal_action=raw.get("pedal_action"),
             has_accent=raw.get("has_accent"),
             markings=raw.get("markings"),
+            bar=bar,
         )
     except KeyError as e:
         raise InvalidNoteData(f"expected note is missing required field: {e.args[0]}") from e
@@ -112,13 +123,14 @@ def align_notes(
 
     window_ms = max(WINDOW_FRACTION_OF_BEAT * (60000.0 / bpm), MIN_WINDOW_MS)
 
-    matched: List[Tuple[ExpectedNote, UserNote]] = []
-    missing: List[ExpectedNote] = []
-
+    # Pass 1, id hints: a detection the client already tied to a written note
+    # (native_ffi's note_id) belongs to that note, if it's also within the
+    # timing window, so a stale/copied id can't pair notes that aren't the
+    # same performance event. Done for every note before any windowed
+    # matching, so an earlier unplayed note can't take a later note's
+    # detection just because it is nearby.
+    hinted: Dict[int, UserNote] = {}
     for expected in expected_sorted:
-        # Validated id-hint shortcut: only trust note_id if it's also within
-        # the timing window, so a stale/copied id can't pair notes that
-        # aren't actually the same performance event.
         id_hint = next(
             (
                 u
@@ -129,8 +141,16 @@ def align_notes(
             None,
         )
         if id_hint is not None:
-            matched.append((expected, id_hint))
+            hinted[id(expected)] = id_hint
             unmatched_user.remove(id_hint)
+
+    # Pass 2: the rest by time and pitch, from what no written note claimed
+    # (e.g. a wrong key, which carries no note_id).
+    matched: List[Tuple[ExpectedNote, UserNote]] = []
+    missing: List[ExpectedNote] = []
+    for expected in expected_sorted:
+        if id(expected) in hinted:
+            matched.append((expected, hinted[id(expected)]))
             continue
 
         candidates = [
@@ -211,7 +231,13 @@ def judge_phrase(
     per_bar = beats_per_bar(time_signature)
     matched, missing, extra = align_notes(parsed_expected, parsed_user, bpm)
     ctx = PhraseContext(
-        phrase=phrase, bpm=bpm, beats_per_bar=per_bar, matched=matched, missing=missing, extra=extra
+        phrase=phrase,
+        bpm=bpm,
+        beats_per_bar=per_bar,
+        matched=matched,
+        missing=missing,
+        extra=extra,
+        printed_bars=printed_bars_of(parsed_expected),
     )
 
     findings = []
@@ -222,7 +248,7 @@ def judge_phrase(
         findings.extend((finding.bars, index, finding) for finding in result.findings)
 
     findings.sort(key=lambda entry: (entry[0], entry[1]))
-    bars = bar_span(bar_of(note.start_time_ms, bpm, per_bar) for note in parsed_expected)
+    bars = bar_span(ctx.bar(note.start_time_ms) for note in parsed_expected)
 
     feedback = [dataclasses.asdict(finding) for _, _, finding in findings]
     _attach_boxes(feedback, _box_index(bar_boxes))

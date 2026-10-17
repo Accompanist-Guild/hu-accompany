@@ -1,6 +1,7 @@
 use crate::dsp::{Analyzer, Detection, FFT_SIZE, HOP_SIZE};
 use crate::models::Notes;
 use crate::run_onnx::{neural_evidence, NetFrame, StreamingPitchNet, FRAME_MS};
+use crate::stray::{StrayKey, StrayKeys};
 use crate::tracker::{Frame, NoteTracker, Thresholds};
 use crate::volume::LevelLog;
 use crate::templates::NoteTemplates;
@@ -354,7 +355,9 @@ fn dsp_processing_loop(mut intake: Intake, sample_rate: u32) {
                         .iter()
                         .map(|&i| (i, analyzer.evidence(tracker.pitch_hz(i), &expected)))
                         .collect();
-                    publish(with_volume(tracker.update(frame, &observations), &levels, tracker.offset_ms()));
+                    let finished = tracker.update(frame, &observations);
+                    publish(tracker.take_started());
+                    publish(with_volume(finished, &levels, tracker));
                 }
             }
             audio_vault.drain(..HOP_SIZE);
@@ -365,7 +368,8 @@ fn dsp_processing_loop(mut intake: Intake, sample_rate: u32) {
     // Stream closed (recording stopped): notes still sounding end here.
     if let Some(tracker) = follower.tracker.as_mut() {
         let end_ms = (consumed_samples + audio_vault.len() as u64) as f32 * ms_per_sample;
-        publish(with_volume(tracker.finish(end_ms), &levels, tracker.offset_ms()));
+        let finished = tracker.finish(end_ms);
+        publish(with_volume(finished, &levels, tracker));
     }
 }
 
@@ -383,11 +387,18 @@ fn neural_processing_loop(mut intake: Intake, sample_rate: u32, mut net: Streami
     let mut history: Vec<f32> = Vec::new();
     let mut history_start: usize = 0;
     let mut window = vec![0.0f32; FFT_SIZE];
+    let mut strays = StrayKeys::new();
 
     let mut step = |frames: Vec<NetFrame>, history: &[f32], history_start: usize, follower: &mut Follower, levels: &LevelLog| {
         for nf in frames {
             let Some(tracker) = follower.tracker() else { continue };
             let frame = Frame { start_ms: nf.start_ms(), end_ms: nf.start_ms() + FRAME_MS as f32 };
+            // Wrong keys, once the player has started (before that, anything goes).
+            if tracker.has_clock() {
+                let allowed = tracker.pitches_near(tracker.score_ms(frame.centre_ms()), STRAY_MARGIN_MS);
+                let heard = strays.update(frame.start_ms, &nf.keys, &allowed);
+                publish(heard.into_iter().map(|key| stray_note(key, tracker, levels)).collect());
+            }
             let candidates = tracker.candidates(frame.centre_ms());
             if candidates.is_empty() {
                 continue;
@@ -404,7 +415,9 @@ fn neural_processing_loop(mut intake: Intake, sample_rate: u32, mut net: Streami
                 .iter()
                 .map(|&i| (i, neural_evidence(&nf, &analyzer, tracker.pitch_hz(i), &expected)))
                 .collect();
-            publish(with_volume(tracker.update(frame, &observations), levels, tracker.offset_ms()));
+            let finished = tracker.update(frame, &observations);
+            publish(tracker.take_started());
+            publish(with_volume(finished, levels, tracker));
         }
     };
 
@@ -430,7 +443,33 @@ fn neural_processing_loop(mut intake: Intake, sample_rate: u32, mut net: Streami
     }
     if let Some(tracker) = follower.tracker.as_mut() {
         let end_ms = (history_start + history.len()) as f32 * ms_per_sample;
-        publish(with_volume(tracker.finish(end_ms), &levels, tracker.offset_ms()));
+        let finished = tracker.finish(end_ms);
+        publish(with_volume(finished, &levels, tracker));
+    }
+}
+
+/// A key is a stray only if the score has nothing on it within this long of
+/// now (score time): a note played a little early or late is a timing
+/// matter, judged as one, not a wrong note.
+const STRAY_MARGIN_MS: f32 = 150.0;
+
+/// A wrong key as a record for Dart: `note_id` 0 (no score note), the key's
+/// pitch, score times. Sent once on its attack (no end) and once on its release.
+fn stray_note(key: StrayKey, tracker: &NoteTracker, levels: &LevelLog) -> Notes {
+    let start = tracker.score_ms(key.start_ms);
+    let end = key.end_ms.map(|e| tracker.score_ms(e).max(start));
+    Notes {
+        note_id: 0,
+        pitch_hz: key.pitch_hz(),
+        start_time_ms: Some(start),
+        end_time_ms: end,
+        duration_ms: end.map(|e| e - start),
+        is_end: false,
+        vibrato_depth: None,
+        pedal_action: None,
+        has_accent: None,
+        markings: None,
+        volume: key.end_ms.and_then(|e| levels.peak_volume(key.start_ms, e)),
     }
 }
 
@@ -472,7 +511,11 @@ fn tracker_for_active_piece(thresholds: Thresholds) -> Option<NoteTracker> {
         return None;
     }
     let tracker = NoteTracker::with_thresholds(&piece.notes, thresholds);
-    Some(if ANCHOR_CLOCK.load(Ordering::Relaxed) { tracker.anchored() } else { tracker })
+    Some(match (ANCHOR_CLOCK.load(Ordering::Relaxed), piece.follow_tempo) {
+        (true, true) => tracker.following(),
+        (true, false) => tracker.anchored(),
+        (false, _) => tracker,
+    })
 }
 
 /// Calibrated note shapes, but only if they were learned on the instrument
@@ -484,13 +527,13 @@ fn templates_for_active_piece() -> Option<NoteTemplates> {
 }
 
 /// Sets each note's `volume` from the level log. Notes carry score-clock
-/// times, the log is indexed by stream time, so the tracker's clock offset is
-/// added back: with the clock anchored to the first note, a note scored at
-/// 0 ms may have been played 5 s into the recording.
-fn with_volume(mut notes: Vec<Notes>, levels: &LevelLog, offset_ms: f32) -> Vec<Notes> {
+/// times and the log is indexed by stream time, so the tracker says where in
+/// the stream each one was heard: with the clock anchored to the first note, a
+/// note scored at 0 ms may have been played 5 s into the recording.
+fn with_volume(mut notes: Vec<Notes>, levels: &LevelLog, tracker: &NoteTracker) -> Vec<Notes> {
     for note in &mut notes {
-        if let (Some(start), Some(end)) = (note.start_time_ms, note.end_time_ms) {
-            note.volume = levels.peak_volume(start + offset_ms, end + offset_ms);
+        if let Some((start, end)) = tracker.stream_span(note.note_id) {
+            note.volume = levels.peak_volume(start, end);
         }
     }
     notes
@@ -545,6 +588,7 @@ mod tests {
                 markings: None,
                 volume: None,
             }],
+            follow_tempo: false,
         }
     }
 
@@ -580,7 +624,8 @@ mod tests {
         ANCHOR_CLOCK.store(true, Ordering::Relaxed);
 
         let user_data = USER_DATA.lock().unwrap();
-        user_data.iter().flatten().filter(|n| n.note_id == note_id).cloned().collect()
+        // Finished records only: each note is also sent once as it starts.
+        user_data.iter().flatten().filter(|n| n.note_id == note_id && n.end_time_ms.is_some()).cloned().collect()
     }
 
     fn assert_close(label: &str, actual: Option<f32>, expected: f32, tolerance: f32) {
@@ -631,7 +676,8 @@ mod tests {
         ANCHOR_CLOCK.store(true, Ordering::Relaxed);
 
         let user_data = USER_DATA.lock().unwrap();
-        user_data.iter().flatten().filter(|n| n.note_id == note_id).cloned().collect()
+        // Finished records only: each note is also sent once as it starts.
+        user_data.iter().flatten().filter(|n| n.note_id == note_id && n.end_time_ms.is_some()).cloned().collect()
     }
 
     // That tone (six harmonics at 0.3/k) is -8.72 dBFS RMS: volume (60 - 8.72) / 60.
