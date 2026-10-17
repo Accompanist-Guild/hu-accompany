@@ -25,6 +25,10 @@ dependencies:
   url_launcher: ^6.3.3
   package_info_plus: ^10.2.2
 
+  # Builds native_ffi (the Rust audio engine) into the macOS app. macOS only; iOS links its own prebuilt copy.
+  rust_lib_hu_accomponist:
+    path: rust_builder
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
