@@ -61,7 +61,10 @@ def start(port: int = 8000) -> None:
     # collides with other local mDNS responders (e.g. Lima, Chrome) that
     # already hold port 5353 there.
     _zeroconf = Zeroconf(interfaces=[ip])
-    _zeroconf.register_service(info)
+    # allow_name_change: if another server (or an announcement that hasn't expired yet) already holds this name,
+    # zeroconf picks "name (2)" instead of raising NonUniqueNameException and taking Django down with it. The app
+    # finds the server by its service type, so the name itself doesn't matter.
+    _zeroconf.register_service(info, allow_name_change=True)
     atexit.register(stop)
 
 
