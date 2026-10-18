@@ -3,12 +3,70 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:nsd/nsd.dart';
 
+import 'package:hu_accomponist/config/app_constants.dart';
+
 class ServerDiscovery {
   static const String _serviceType = '_huaccompany._tcp';
 
   static const Duration _discoveryTimeout = Duration(seconds: 5);
 
   static String? _cachedBaseUrl;
+
+  /// The address this build was given (SERVER_URL), already checked, or null to search the network instead.
+  static String? _configuredBaseUrl = configuredBaseUrl(AppConstants.serverUrl);
+
+  /// True when this build was given a usable server address and so never searches the network.
+  static bool get isConfigured => _configuredBaseUrl != null;
+
+  /// Replaces the configured address, for tests. An empty string means "none".
+  @visibleForTesting
+  static void useConfiguredUrl(String raw) =>
+      _configuredBaseUrl = configuredBaseUrl(raw);
+
+  /// Checks a build-time server address and tidies it, or returns null if it should not be used.
+  ///
+  /// The app key travels with every request to this address, and a key sent in the clear can be read by anyone
+  /// on the path, so only `https` is accepted, plus plain `http` to this machine or the local network (to try a
+  /// build against a server on your laptop). A refused address is logged and ignored, which makes the app fall
+  /// back to searching the network; a loud log is better than a build that quietly leaks its key.
+  static String? configuredBaseUrl(String raw) {
+    var text = raw.trim();
+    if (text.isEmpty) return null;
+    while (text.endsWith('/')) {
+      text = text.substring(0, text.length - 1);
+    }
+
+    final uri = Uri.tryParse(text);
+    final usable = uri != null &&
+        uri.host.isNotEmpty &&
+        (uri.scheme == 'https' ||
+            (uri.scheme == 'http' && _isLocalHost(uri.host)));
+    if (!usable) {
+      debugPrint(
+        '[Diagnostics] discovery: ignoring SERVER_URL "$raw" — it must be '
+        'https (or http to a local machine). Searching the network instead.',
+      );
+      return null;
+    }
+    return text;
+  }
+
+  /// This machine, or one on the same network: loopback, a private IPv4 range, or a `.local` name.
+  static bool _isLocalHost(String host) {
+    final name = host.toLowerCase();
+    if (name == 'localhost' || name == '::1' || name.endsWith('.local')) {
+      return true;
+    }
+    final parts = name.split('.');
+    if (parts.length != 4) return false;
+    final octets = parts.map(int.tryParse).toList();
+    if (octets.any((o) => o == null || o < 0 || o > 255)) return false;
+    final a = octets[0]!, b = octets[1]!;
+    return a == 127 ||
+        a == 10 ||
+        (a == 192 && b == 168) ||
+        (a == 172 && b >= 16 && b <= 31);
+  }
 
   /// Skips discovery and uses [baseUrl], for tests that talk to a server they started.
   @visibleForTesting
@@ -39,6 +97,11 @@ class ServerDiscovery {
   ///
   /// If a server was already found, the cached address is returned immediately.
   static Future<String?> resolveBaseUrl({bool forceRefresh = false}) async {
+    // A build given a server address uses it and never searches: the network search only finds a server on the
+    // same Wi-Fi, which is no use to someone downloading the app. Nothing to refresh either: the address is fixed.
+    final configured = _configuredBaseUrl;
+    if (configured != null) return configured;
+
     // Use the previously discovered server when possible.
     if (!forceRefresh && _cachedBaseUrl != null) {
       debugPrint('[Diagnostics] discovery: using cached backend $_cachedBaseUrl');

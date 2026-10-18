@@ -17,6 +17,19 @@ abstract final class AppConstants {
   ///   flutter build ios --dart-define=LOGIN_REQUIRED=true
   static const bool loginRequired = bool.fromEnvironment('LOGIN_REQUIRED');
 
+  /// Where the backend lives, for a build that talks to a deployed server:
+  ///
+  ///   flutter build macos --dart-define=SERVER_URL=https://my-service.a.run.app --dart-define=APP_KEY=...
+  ///
+  /// Left empty (the default), the app searches the local network for a server instead, which is what you want
+  /// while developing. See `ServerDiscovery.configuredBaseUrl` for which addresses are accepted.
+  static const String serverUrl = String.fromEnvironment('SERVER_URL');
+
+  /// The shared key the server expects in `X-App-Key` (the server's `APP_API_KEY`). It ships inside the app, so
+  /// anyone can read it out of the download: it keeps casual traffic out, and the server's rate limits are what
+  /// protect it from abuse. Empty means "send none", which is right for a local server that has no key set.
+  static const String appKey = String.fromEnvironment('APP_KEY');
+
   static const String privacyPolicyUrl = String.fromEnvironment(
     'PRIVACY_POLICY_URL',
     defaultValue: 'https://hu-accompany.example/privacy',
