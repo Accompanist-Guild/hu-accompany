@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:hu_accomponist/integrations/server/ServerDiscovery.dart';
+import 'package:hu_accomponist/integrations/server/server_auth.dart';
 import 'package:hu_accomponist/integrations/feedback/Pull_back_phrase.dart';
 import 'package:hu_accomponist/src/rust/models.dart';
 
@@ -139,7 +140,7 @@ class PhraseUploadService {
       return await http
           .post(
             uri,
-            headers: {'Content-Type': 'application/json'},
+            headers: ServerAuth.headers({'Content-Type': 'application/json'}),
             body: body,
           )
           .timeout(_sendTimeout);
