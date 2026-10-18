@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:hu_accomponist/config/app_constants.dart';
 import 'package:hu_accomponist/features/hum/hum_chat.dart';
 import 'package:hu_accomponist/features/hum/talk_consent.dart';
 import 'package:hu_accomponist/features/hum/hum_controller.dart';
@@ -21,9 +22,13 @@ import 'package:hu_accomponist/features/shell/shell_controller.dart';
 class HumPage extends StatefulWidget {
   /// A controller to use instead of making one (tests hand in fakes). The
   /// page disposes only a controller it made itself.
-  const HumPage({super.key, this.controller});
+  const HumPage({super.key, this.controller, this.talkMode});
 
   final HumController? controller;
+
+  /// Whether to show the chat for changing the song with words. Null means the build setting,
+  /// [AppConstants.talkMode].
+  final bool? talkMode;
 
   @override
   State<HumPage> createState() => _HumPageState();
@@ -144,8 +149,10 @@ class _HumPageState extends State<HumPage> {
               onMood: c.setMood,
             ),
           ],
-          const SizedBox(height: Space.md),
-          HumChat(chat: c.chat),
+          if (widget.talkMode ?? AppConstants.talkMode) ...[
+            const SizedBox(height: Space.md),
+            HumChat(chat: c.chat),
+          ],
         ],
       ],
     );

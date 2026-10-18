@@ -285,6 +285,7 @@ void main() {
             auth: auth,
             links: links,
             loginRequired: loginRequired,
+            talkMode: true, // off in a default build; talk_mode_flag_test.dart covers that
             sharer: sharer,
             consent: talk,
             loadVersion: () async => const AppVersion('1.2.3', '45'),

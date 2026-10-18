@@ -49,6 +49,10 @@ class SettingsPage extends StatefulWidget {
   /// and Export my data have nothing to act on, so they are left out.
   final bool? loginRequired;
 
+  /// Whether Talk mode is part of the app, which decides if its permission row is shown. Null means the build
+  /// setting, [AppConstants.talkMode].
+  final bool? talkMode;
+
   /// Defaults to asking the shell, which is where the tutorial lives.
   final VoidCallback? onReplayTutorial;
 
@@ -60,6 +64,7 @@ class SettingsPage extends StatefulWidget {
     this.consent = const PrefsTalkConsent(),
     this.loadVersion = AppVersion.fromPlatform,
     this.loginRequired,
+    this.talkMode,
     this.onReplayTutorial,
   });
 
@@ -71,6 +76,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late final Future<AppVersion> _version = widget.loadVersion();
 
   bool get _hasAccounts => widget.loginRequired ?? AppConstants.loginRequired;
+  bool get _hasTalkMode => widget.talkMode ?? AppConstants.talkMode;
 
   /// Whether Talk mode may share requests with the AI services. Null while loading.
   bool? _talkAllowed;
@@ -357,14 +363,15 @@ class _SettingsPageState extends State<SettingsPage> {
             _Section(
               title: 'Account & data',
               rows: [
-                _SettingsRow(
-                  icon: Icons.record_voice_over_outlined,
-                  label: 'Talk mode and AI services',
-                  subtitle: _talkAllowed == true
-                      ? 'Allowed. Tap to stop sharing with Google Gemini and ElevenLabs'
-                      : 'Not allowed. You will be asked when you use Talk mode',
-                  onTap: _talkSharing,
-                ),
+                if (_hasTalkMode)
+                  _SettingsRow(
+                    icon: Icons.record_voice_over_outlined,
+                    label: 'Talk mode and AI services',
+                    subtitle: _talkAllowed == true
+                        ? 'Allowed. Tap to stop sharing with Google Gemini and ElevenLabs'
+                        : 'Not allowed. You will be asked when you use Talk mode',
+                    onTap: _talkSharing,
+                  ),
                 if (_hasAccounts) ...[
                   _SettingsRow(
                     icon: Icons.download_outlined,
