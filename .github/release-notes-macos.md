@@ -12,6 +12,7 @@ To check your download wasn't damaged, put the `.sha256` file beside the `.dmg` 
 
 - Hum mode, the shelf, the library and the quiz.
 - Practice feedback from a real instrument. It listens through the microphone, so allow the microphone when macOS asks.
-- Hum mode and the library need the Hu Accompany server; without it they show a "could not find the server" message.
+- Hum mode, the library and the quiz need an internet connection: they use the Hu Accompany server.
+- Talk mode (changing a song by typing or speaking to it) is not part of this version.
 
 ---
