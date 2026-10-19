@@ -16,7 +16,7 @@ from django.http import Http404, HttpResponse
 from django.views.decorators.http import require_safe
 
 APP_NAME = "Hu Accomponist"
-EFFECTIVE_DATE = "October 15, 2026"
+EFFECTIVE_DATE = "October 19, 2026"
 
 TITLES = {"privacy": "Privacy Policy", "terms": "Terms of Service", "support": "Support"}
 
@@ -26,6 +26,23 @@ CONTENT_SECURITY_POLICY = (
 )
 
 _TOKEN = re.compile(r"\{\{([A-Z_]+)\}\}")
+
+# Parts of a page that only apply when a feature is in the release. In the HTML:
+#     <!--if talk-->...<!--/if-->     kept only when Talk mode is in this release
+#     <!--if !talk-->...<!--/if-->    kept only when it is not
+# The names map to settings, so the policy can't describe a feature the server isn't set up for, or stay silent
+# about one it is. Blocks must not be nested.
+_CONDITION = re.compile(r"<!--if (!?)([a-z]+)-->(.*?)<!--/if-->", re.DOTALL)
+_CONDITION_SETTINGS = {"accounts": "LEGAL_ACCOUNTS", "talk": "LEGAL_TALK_MODE", "appstore": "LEGAL_APP_STORE"}
+
+
+def _apply_conditions(text: str) -> str:
+    def keep(match):
+        negate, name, body = match.groups()
+        enabled = bool(getattr(settings, _CONDITION_SETTINGS[name], False))  # KeyError for an unknown name
+        return body if enabled != bool(negate) else ""
+
+    return _CONDITION.sub(keep, text)
 
 
 @lru_cache(maxsize=16)
@@ -50,7 +67,7 @@ def render(page: str) -> str:
         "HUM_RETENTION": _hours(float(getattr(settings, "HUM_TTL_HOURS", 3.0))),
     }
     # One pass over the whole page, so a value that happens to contain "{{...}}" is never expanded again.
-    combined = _read("layout").replace("{{CONTENT}}", _read(page))
+    combined = _apply_conditions(_read("layout").replace("{{CONTENT}}", _read(page)))
     return _TOKEN.sub(lambda m: html.escape(str(values[m.group(1)]), quote=True), combined)
 
 

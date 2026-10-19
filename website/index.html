@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hu Accomponist</title>
+<meta name="description" content="Hum a tune and get an accompaniment, practise with feedback from your own instrument, and study with quizzes. Free download for Mac.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://api.github.com; base-uri 'none'; form-action 'none'">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="room">
+  <div class="wrap">
+    <nav class="herolinks" aria-label="Site"><a href="docs/">Guides</a><a href="docs/getting-started.html">Install help</a><a href="https://github.com/RamusHu0410/hu-accompany">Source</a></nav>
+    <p class="kicker">A companion for the musician</p>
+    <h1>Hu <span>Accomponist</span></h1>
+    <p class="lead">Hum a tune and get a song to play along with. Practise on your own instrument and hear how you did.</p>
+
+    <div class="turntable" aria-hidden="true"><div class="record"></div></div>
+
+    <div class="glass">
+      <a id="download" class="button" href="https://github.com/RamusHu0410/hu-accompany/releases" aria-disabled="true">Download for Mac</a>
+      <p class="meta" id="download-status">Looking for the latest version&hellip;</p>
+      <p class="meta">
+        For macOS 12 or later, on Apple silicon or Intel.
+        <a id="checksum" href="#" hidden>Checksum</a>
+        <a id="all-releases" href="https://github.com/RamusHu0410/hu-accompany/releases">All versions</a>
+      </p>
+      <noscript><p class="meta">Turn on JavaScript to see the latest version, or open the <a href="https://github.com/RamusHu0410/hu-accompany/releases">releases page</a>.</p></noscript>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <main>
+    <h2>What you can do</h2>
+    <ul class="tiles">
+      <li class="tile teal"><h3>Hum</h3><p>Hum a melody and the app turns it into a song to play along with. Reshape it by typing or speaking (Talk mode, 18 and over).</p></li>
+      <li class="tile lavender"><h3>Practise</h3><p>Play your instrument into the microphone and see what you got right.</p></li>
+      <li class="tile rose"><h3>Library and shelf</h3><p>Browse public-domain scores and keep your favourites close.</p></li>
+      <li class="tile sage"><h3>Quiz</h3><p>Generate music-history questions from a topic you are studying.</p></li>
+    </ul>
+    <p class="plain">Songs, practice feedback, the library and the quiz need an internet connection, because they use the Hu Accomponist server.</p>
+
+    <h2>Install</h2>
+    <div class="card">
+      <ol class="steps">
+        <li>Download the <code>.dmg</code> above, open it, and drag the app onto <strong>Applications</strong>.</li>
+        <li>The first time you open it, macOS will refuse, because the app is not signed with an Apple Developer ID. To allow it, open <strong>System Settings &rsaquo; Privacy &amp; Security</strong>, scroll to the message about the app and click <strong>Open Anyway</strong>. Or in Terminal run <code>xattr -dr com.apple.quarantine /Applications/hu_accomponist.app</code> and open it again.</li>
+        <li>Allow the microphone when asked. Hum mode and practice need it.</li>
+      </ol>
+    </div>
+    <p class="note">Only install apps you trust. This one is open source: its code, and the build that made your download, are public on GitHub. To check your download was not damaged, save the checksum file next to the <code>.dmg</code> and run <code>shasum -a 256 -c &lt;name&gt;.dmg.sha256</code> in Terminal.</p>
+
+    <h2>Learn how it works</h2>
+    <ul class="guides">
+      <li><a class="guide" href="docs/getting-started.html"><strong>Getting started</strong><span>Install, first launch, the microphone, finding your way around.</span></a></li>
+      <li><a class="guide" href="docs/hum.html"><strong>Hum a song</strong><span>Hold, hum, and shape the song that comes back.</span></a></li>
+      <li><a class="guide" href="docs/practice.html"><strong>Practise</strong><span>Exercises and scores, with feedback on every phrase.</span></a></li>
+      <li><a class="guide" href="docs/troubleshooting.html"><strong>Troubleshooting</strong><span>Blocked by macOS, no microphone, server not found.</span></a></li>
+    </ul>
+    <p class="plain"><a href="docs/">All guides</a> &middot; <a href="docs/faq.html">Questions and answers</a></p>
+
+    <h2>Your recordings</h2>
+    <p>When you play an instrument, the app analyses the sound on your computer and sends only the notes it detected. When you hum, the recording goes to our server to be turned into a song, and is deleted automatically after a short while. If you choose to use Talk mode, which is for people 18 or older and which the app asks you to agree to first, what you type or say is also sent to Google Gemini and ElevenLabs. The Privacy Policy has the details.</p>
+  </main>
+
+  <footer>
+    <a id="link-privacy" href="#" hidden>Privacy Policy</a>
+    <a id="link-terms" href="#" hidden>Terms of Service</a>
+    <a id="link-support" href="#" hidden>Support</a>
+    <a href="docs/">Guides</a>
+    <a href="https://github.com/RamusHu0410/hu-accompany">Source code</a>
+  </footer>
+</div>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -24,7 +24,7 @@ REGION="${REGION:-us-central1}"
 SERVICE="${SERVICE:-hu-accompany}"
 NEON_NAME="${NEON_NAME:-hu-accompany}"
 R2_BUCKET="${R2_BUCKET:-hu-accompany-scores}"
-BUDGET_USD="${BUDGET_USD:-40}"
+BUDGET_USD="${BUDGET_USD:-10}"
 PYTHON="${PYTHON:-python3}"
 ALL_STAGES="tools login gcp neon r2 secrets data deploy"
 STAGES="${STAGES:-$ALL_STAGES}"
@@ -129,15 +129,30 @@ stage_gcp() {
   done
 }
 
+# neonctl (v8) refuses to list or create projects without saying which organization, and prompts for it, which
+# fails in a script. Accounts have at least one (signing up makes one), so use the only one, or ask.
+neon_org() {
+  [ -n "${NEON_ORG_ID:-}" ] && return 0
+  local ids count
+  ids="$(neonctl orgs list --output json 2>/dev/null | json_get "' '.join(o['id'] for o in (d if isinstance(d, list) else d.get('organizations', [])))" || true)"
+  count="$(printf '%s' "$ids" | wc -w | tr -d ' ')"
+  if [ "$count" = 1 ]; then save NEON_ORG_ID "$ids"
+  elif [ "$count" -gt 1 ]; then
+    note "Your Neon account has several organizations: $ids"
+    ask NEON_ORG_ID "Which one should hold the database (paste its id)"; save NEON_ORG_ID "$NEON_ORG_ID"
+  fi
+}
+
 stage_neon() {
   say "neon: the Postgres database"
+  neon_org
   if [ -z "${NEON_PROJECT_ID:-}" ]; then
     local found
-    found="$(neonctl projects list --output json | json_get "next((p['id'] for p in (d['projects'] if isinstance(d, dict) else d) if p['name']=='$NEON_NAME'), '')")"
+    found="$(neonctl projects list ${NEON_ORG_ID:+--org-id "$NEON_ORG_ID"} --output json | json_get "next((p['id'] for p in (d['projects'] if isinstance(d, dict) else d) if p['name']=='$NEON_NAME'), '')")"
     if [ -n "$found" ]; then note "using existing Neon project $NEON_NAME"; save NEON_PROJECT_ID "$found"
     else
       note "creating Neon project $NEON_NAME"
-      save NEON_PROJECT_ID "$(neonctl projects create --name "$NEON_NAME" --output json | json_get "(d.get('project') or d)['id']")"
+      save NEON_PROJECT_ID "$(neonctl projects create ${NEON_ORG_ID:+--org-id "$NEON_ORG_ID"} --name "$NEON_NAME" --output json | json_get "(d.get('project') or d)['id']")"
     fi
   fi
   # The direct (not pooled) address: fine for Django, and what migrations want.
@@ -184,7 +199,6 @@ ensure_secret() {
   else printf '%s' "$2" | gcloud secrets create "$1" --data-file=- --project "$PROJECT" >/dev/null; note "created secret $1"; fi
 }
 
-dotenv_value() { [ -f backend/.env ] && sed -n "s/^$1=//p" backend/.env | head -1 | sed -e "s/^['\"]//" -e "s/['\"]$//" || true; }
 
 stage_secrets() {
   say "secrets: stored in Google Secret Manager, never in files"
@@ -199,18 +213,23 @@ stage_secrets() {
       note "updated secret postgres-password (it changed in Neon)"
     else note "kept existing secret postgres-password"; fi
   else ensure_secret postgres-password "$POSTGRES_PASSWORD"; fi
-  local gem eleven
-  gem="${GEMINI_API_KEY:-$(dotenv_value GEMINI_API_KEY)}"; eleven="${ELEVENLABS_API_KEY:-$(dotenv_value ELEVENLABS_API_KEY)}"
-  if ! gcloud secrets describe gemini-api-key --project "$PROJECT" >/dev/null 2>&1; then
-    GEMINI_API_KEY="$gem"; ask GEMINI_API_KEY "Gemini API key for talk mode (type none to skip)" secret; gem="$GEMINI_API_KEY"
-    [ "$gem" = none ] && gem="not-configured"
+  # Gemini and ElevenLabs power Talk mode (changing a song by typing or speaking). The app asks each person to confirm
+  # they are 18 or older and to agree before anything is sent to them. They bill per use, so a key is optional here:
+  # without one, the server answers Talk mode with a plain "key is missing" message and everything else works.
+  # The key comes from the environment (GEMINI_API_KEY / ELEVENLABS_API_KEY) or is typed now (blank skips it). A
+  # secret that already exists is never changed; add or replace a key later with
+  #   printf '%s' KEY | gcloud secrets versions add gemini-api-key --data-file=-     (or elevenlabs-api-key)
+  # and redeploy so the service picks it up. backend/.env is not read, so a development key left there cannot end up
+  # in production by accident.
+  local gem="${GEMINI_API_KEY:-}" eleven="${ELEVENLABS_API_KEY:-}"
+  if ! gcloud secrets describe gemini-api-key --project "$PROJECT" >/dev/null 2>&1 && [ -z "$gem" ] && [ -t 0 ]; then
+    read -r -s -p "Gemini API key for Talk mode (blank to skip): " gem; echo
   fi
-  if ! gcloud secrets describe elevenlabs-api-key --project "$PROJECT" >/dev/null 2>&1; then
-    ELEVENLABS_API_KEY="$eleven"; ask ELEVENLABS_API_KEY "ElevenLabs API key for talk mode (type none to skip)" secret; eleven="$ELEVENLABS_API_KEY"
-    [ "$eleven" = none ] && eleven="not-configured"
+  if ! gcloud secrets describe elevenlabs-api-key --project "$PROJECT" >/dev/null 2>&1 && [ -z "$eleven" ] && [ -t 0 ]; then
+    read -r -s -p "ElevenLabs API key for Talk mode (blank to skip): " eleven; echo
   fi
-  ensure_secret gemini-api-key "$gem"
-  ensure_secret elevenlabs-api-key "$eleven"
+  if [ -n "$gem" ]; then ensure_secret gemini-api-key "$gem"; else note "no Gemini key: Talk mode will say its key is missing"; fi
+  if [ -n "$eleven" ]; then ensure_secret elevenlabs-api-key "$eleven"; else note "no ElevenLabs key: voice in Talk mode will say its key is missing"; fi
 }
 
 stage_data() {
@@ -247,9 +266,12 @@ stage_deploy() {
   # Printed on the public privacy policy, so it must be an address you really read.
   ask SUPPORT_EMAIL "Support email address to show on the privacy policy (create it first)"
   save SUPPORT_EMAIL "$SUPPORT_EMAIL"
+  # Named on the public privacy policy and terms as the party responsible, so the server refuses to start without one.
+  ask LEGAL_PUBLISHER "Name to show as the publisher on the privacy policy and terms (your legal or business name, no commas)"
+  save LEGAL_PUBLISHER "$LEGAL_PUBLISHER"
   PROJECT="$PROJECT" REGION="$REGION" SERVICE="$SERVICE" \
   POSTGRES_HOST="$POSTGRES_HOST" POSTGRES_DB="$POSTGRES_DB" POSTGRES_USER="$POSTGRES_USER" \
-  MUSICXML_BASE_URL="$MUSICXML_BASE_URL" SUPPORT_EMAIL="$SUPPORT_EMAIL" BILLING_ACCOUNT="${BILLING_ACCOUNT:-}" BUDGET_USD="$BUDGET_USD" \
+  MUSICXML_BASE_URL="$MUSICXML_BASE_URL" SUPPORT_EMAIL="$SUPPORT_EMAIL" LEGAL_PUBLISHER="$LEGAL_PUBLISHER" BILLING_ACCOUNT="${BILLING_ACCOUNT:-}" BUDGET_USD="$BUDGET_USD" \
     backend/deploy/cloud-run.sh
 
   say "verify"

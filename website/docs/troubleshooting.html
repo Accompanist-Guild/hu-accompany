@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Troubleshooting | Hu Accomponist guides</title>
+<meta name="description" content="Fixes for the problems people hit most often.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="../">Hu <span>Accomponist</span></a>
+    <nav aria-label="Site"><a href="./">Guides</a><a href="faq.html">FAQ</a><a href="../#download">Download</a></nav>
+  </div>
+</header>
+<div class="wrap">
+  <p class="crumbs"><a href="../">Home</a> &rsaquo; <a href="./">Guides</a> &rsaquo; Troubleshooting</p>
+  <article>
+    <h1>Troubleshooting</h1>
+    <p class="intro">Fixes for the problems people hit most often.</p>
+
+<h2 id="blocked">macOS says it can't open the app</h2>
+<p>You will see a message that the app cannot be opened because Apple cannot check it for malicious software, or that the developer cannot be verified. This is normal for this app, which is not signed with an Apple Developer ID.</p>
+<ol>
+  <li>Close the message.</li>
+  <li>Open <strong>System Settings &rsaquo; Privacy &amp; Security</strong> and scroll to the message about the app.</li>
+  <li>Click <strong>Open Anyway</strong>, and confirm.</li>
+</ol>
+<p>Or run this in Terminal, then open the app again: <code>xattr -dr com.apple.quarantine /Applications/hu_accomponist.app</code></p>
+<p>If macOS says the app is <em>damaged</em>, the download may be incomplete. Check it with the checksum (see <a href="getting-started.html">Getting started</a>) and download it again if it does not say OK.</p>
+
+<h2 id="microphone">The app can't hear me</h2>
+<ol>
+  <li>Open <strong>System Settings &rsaquo; Privacy &amp; Security &rsaquo; Microphone</strong> and make sure the app is switched <strong>on</strong>. Then quit the app and open it again. (On macOS 12 this is <strong>System Preferences &rsaquo; Security &amp; Privacy &rsaquo; Privacy &rsaquo; Microphone</strong>.)</li>
+  <li>Open <strong>System Settings &rsaquo; Sound &rsaquo; Input</strong>, choose the microphone you want, and watch the level bar move when you make a sound.</li>
+  <li>Close other apps that might be using the microphone, such as a call or a recording.</li>
+</ol>
+
+<h2 id="server">"Could not reach the server"</h2>
+<ul>
+  <li>Check your internet connection, and any VPN or firewall that might block the app.</li>
+  <li>Wait a minute and try again. The server rests when nobody is using it, and the first request after a quiet spell can be slow or time out. The app retries once on its own, and the second try usually works.</li>
+</ul>
+
+<h2 id="hum">My hum could not be turned into notes</h2>
+<ul>
+  <li>Hold the button for a few seconds. A very short or silent recording has nothing to find.</li>
+  <li>Move closer to the microphone, use a quiet room, and hum steadier notes.</li>
+  <li>If it says the hum <em>isn't on the server any more</em>, hums are deleted automatically after about three hours (or if the server restarted). Hum again.</li>
+</ul>
+
+<h2 id="practice">Practice shows everything red, or hears nothing</h2>
+<ul>
+  <li>Start on the beat <strong>after</strong> the count-in reaches 4. Playing during the count-in, or very late, makes notes look wrong.</li>
+  <li>Try a slower tempo, and in an exercise a higher starting octave, which is detected more accurately.</li>
+  <li>Place the microphone near the instrument, in a quiet room, and play clear single notes first.</li>
+  <li>Make sure you chose the piece you are actually playing. It only listens for the notes of the loaded piece.</li>
+  <li>Check the <a href="#microphone">microphone</a> is on and the right input is chosen.</li>
+</ul>
+
+<h2 id="talk">Talk mode keeps asking, or stopped working</h2>
+<ul>
+  <li>If you chose <strong>Stop sharing</strong> in Settings, Talk mode waits until you agree again. That is intended.</li>
+  <li>The app asks again if what Talk mode shares changes. That is intended too.</li>
+  <li>If it says a service key is missing, the server's connection to that AI service is not set up right now. Try again later.</li>
+</ul>
+
+<h2 id="search">Search finds nothing</h2>
+<p>Every word has to match the title or composer, so try fewer words or a surname on its own. The library only holds public-domain scores, so modern songs will not be there.</p>
+
+<h2>Still stuck?</h2>
+<p>In the app, open <strong>Settings &rsaquo; Contact support or send feedback</strong>. Tell us what happened, which Mac and macOS version you have, and what you were doing. The <a href="faq.html">questions and answers</a> may help too.</p>
+
+    <nav class="pager" aria-label="Guides"><a class="prev" href="talk-mode.html"><small>Previous</small>Talk mode</a><a class="next" href="faq.html"><small>Next</small>Questions and answers</a></nav>
+  </article>
+  <footer>
+    <a id="link-privacy" href="#" hidden>Privacy Policy</a>
+    <a id="link-terms" href="#" hidden>Terms of Service</a>
+    <a id="link-support" href="#" hidden>Support</a>
+    <a href="./">Guides</a>
+    <a href="https://github.com/RamusHu0410/hu-accompany">Source code</a>
+  </footer>
+</div>
+<script src="../config.js"></script>
+<script src="../app.js"></script>
+</body>
+</html>

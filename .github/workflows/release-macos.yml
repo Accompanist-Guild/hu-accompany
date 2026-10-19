@@ -57,7 +57,7 @@ jobs:
           TERMS_OF_SERVICE_URL: ${{ vars.TERMS_OF_SERVICE_URL }}
           SUPPORT_EMAIL: ${{ vars.SUPPORT_EMAIL }}
           # Where the deployed backend is (variable), the key it expects (secret), and whether Talk mode is in
-          # this build (variable, "true" to turn it on; unset leaves it out).
+          # this build (variable; it is on unless this is set to "false").
           SERVER_URL: ${{ vars.SERVER_URL }}
           APP_KEY: ${{ secrets.APP_KEY }}
           TALK_MODE: ${{ vars.TALK_MODE }}

@@ -13,11 +13,12 @@ import 'support/auth_fakes.dart';
 import 'support/hum_fakes.dart';
 
 /// Talk mode (typing or speaking a change to the song) is answered by Google Gemini and ElevenLabs on the server.
-/// A first public launch leaves it off, so the chat and its settings row are hidden unless the build says
-/// `--dart-define=TALK_MODE=true`. Everything else on both screens must stay exactly as it is.
+/// It is on by default (nothing is sent until the person agrees in the consent box, see talk_consent_test.dart),
+/// and a build for a server without those keys can leave it out with `--dart-define=TALK_MODE=false`, which hides
+/// the chat and its settings row. Everything else on both screens must stay exactly as it is.
 void main() {
-  test('is off in a build that does not ask for it', () {
-    expect(AppConstants.talkMode, isFalse);
+  test('is on in a build that does not say otherwise', () {
+    expect(AppConstants.talkMode, isTrue);
   });
 
   group('hum page', () {
@@ -56,21 +57,23 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('by default shows the song and its controls but no chat', (tester) async {
+    testWidgets('by default the chat is there, next to the song and its controls', (tester) async {
       await humWith(tester);
+
+      expect(find.text('G major  ·  97 bpm  ·  9 notes'), findsOneWidget);
+      expect(find.text('YOUR SONG'), findsOneWidget);
+      expect(find.byType(HumChat), findsOneWidget);
+      expect(find.text('CHANGE IT WITH WORDS'), findsOneWidget);
+    });
+
+    testWidgets('with Talk mode left out of the build, there is no chat but the song and controls stay', (tester) async {
+      await humWith(tester, talkMode: false);
 
       expect(find.text('G major  ·  97 bpm  ·  9 notes'), findsOneWidget);
       expect(find.text('YOUR SONG'), findsOneWidget);
       expect(find.byType(HumChat), findsNothing);
       expect(find.text('CHANGE IT WITH WORDS'), findsNothing);
       expect(find.byKey(const ValueKey('chat-mic')), findsNothing);
-    });
-
-    testWidgets('with Talk mode on, the chat is there', (tester) async {
-      await humWith(tester, talkMode: true);
-
-      expect(find.byType(HumChat), findsOneWidget);
-      expect(find.text('CHANGE IT WITH WORDS'), findsOneWidget);
     });
   });
 
@@ -102,17 +105,18 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('by default has no Talk mode row, and keeps the others', (tester) async {
+    testWidgets('by default has the Talk mode row, and the others', (tester) async {
       await settingsWith(tester);
 
-      expect(find.text('Talk mode and AI services'), findsNothing);
+      expect(find.text('Talk mode and AI services'), findsOneWidget);
       expect(find.text('Open-source licenses'), findsOneWidget);
     });
 
-    testWidgets('with Talk mode on, the row is there', (tester) async {
-      await settingsWith(tester, talkMode: true);
+    testWidgets('with Talk mode left out of the build, the row is gone and the others stay', (tester) async {
+      await settingsWith(tester, talkMode: false);
 
-      expect(find.text('Talk mode and AI services'), findsOneWidget);
+      expect(find.text('Talk mode and AI services'), findsNothing);
+      expect(find.text('Open-source licenses'), findsOneWidget);
     });
   });
 }

@@ -30,7 +30,7 @@ Set these once at **Settings > Secrets and variables > Actions**. The workflow p
 | `SERVER_URL` | Variable | The deployed backend, like `https://my-service-abc.a.run.app`. Must start with `https://` or the release fails. Unset, the app only looks for a server on the local network, which is no use to someone who downloads it. |
 | `APP_KEY` | **Secret** | The key the server expects (its `APP_API_KEY`; `setup.sh` prints how to read it). The app sends it with every request. **It ends up inside the downloadable app, so anyone can extract it**: it keeps casual traffic out, and the server's rate limits are the real protection. |
 | `PRIVACY_POLICY_URL`, `TERMS_OF_SERVICE_URL`, `SUPPORT_EMAIL` | Variables | The links in the app. Unset, they are placeholder `.example` addresses that don't open. The server serves `/privacy`, `/terms` and `/support`. |
-| `TALK_MODE` | Variable | Set to `true` to include Talk mode (changing a song by typing or speaking). Unset leaves it out, which is right for a first launch: it runs on Gemini and ElevenLabs, which cost money per use. The release notes (`.github/release-notes-macos.md`) say Talk mode is not included, so edit that line if you turn it on. |
+| `TALK_MODE` | Variable | Talk mode (changing a song by typing or speaking) is **on** unless this is set to `false`. Nothing is sent to Google Gemini or ElevenLabs until the person confirms they are 18 or older and agrees in a box the app shows. Both bill per use on the server side. They need their keys on the server (`setup.sh` asks; without them Talk mode answers "key is missing"), and the server's `LEGAL_TALK_MODE` (on by default in `cloud-run.sh`) makes the privacy policy and terms describe it. If you set this to `false`, also deploy with `LEGAL_TALK_MODE=false` and edit the Talk line in `.github/release-notes-macos.md`. |
 
 ## What this build is, and is not
 
@@ -46,3 +46,21 @@ Set these once at **Settings > Secrets and variables > Actions**. The workflow p
 ## Checked, and not checked
 
 Checked on a Mac, from a fresh `git clone` plus these changes: `flutter pub get`, `analyze`, all 232 tests, `flutter build macos --release`, the packaging script, and the workflow's own check step (including a failing case). **Not checked: the workflow on GitHub itself**, because it hasn't been pushed. Run it once with **Run workflow** before relying on it.
+
+## Checking a server with the app's own code
+
+`frontend/test/live_server_smoke_test.dart` runs the app's score search, score download and quiz code against a real server, with the same `SERVER_URL` and `APP_KEY` a release gets. It also checks that the server refuses a request with no key. It skips itself unless a server address is given:
+
+```bash
+cd frontend
+flutter test test/live_server_smoke_test.dart \
+  --dart-define=SERVER_URL=https://<your service>.run.app --dart-define=APP_KEY=<the key>
+```
+
+Run it once after `backend/deploy/setup.sh`, before tagging a release. It passed against a local copy of the backend in production mode (gunicorn, `DJANGO_ENV=production`, the app key on) and failed, as it should, with a wrong key or an `http://` address that is not on this machine.
+
+## The download website
+
+`website/` is a small static site: a home page with a Download button that always points at the newest release's `.dmg` (it asks GitHub when the page opens) and the install steps, a set of user guides under `website/docs/` (getting started, hum, practice, library, quiz, Talk mode, troubleshooting, FAQ), and links to the server's Privacy Policy, Terms and Support pages. `website/README.md` explains how it is built and which guide to update when the app changes; `scripts/check_website.py` (run by the publish workflow) fails on a broken link. `.github/workflows/pages.yml` publishes it to GitHub Pages whenever `website/` changes on `main`, filling in the repository and the `SERVER_URL` variable. One-time setup: **Settings > Pages > Build and deployment > Source: GitHub Actions**. The address will be `https://<owner>.github.io/<repo>/`. To try it locally: `cd website && python3 -m http.server`.
+
+The button shows "first release is not published yet" until a release exists, and it skips pre-releases (`/releases/latest` ignores them), so a `v0.1.0-beta.1` tag will not appear on the page.

@@ -17,13 +17,15 @@ abstract final class AppConstants {
   ///   flutter build ios --dart-define=LOGIN_REQUIRED=true
   static const bool loginRequired = bool.fromEnvironment('LOGIN_REQUIRED');
 
-  /// Whether Talk mode (changing the song by typing or speaking to it) is part of this build. Off by default:
-  /// the server answers it through Google Gemini and ElevenLabs, which cost money per use and need their own
-  /// privacy wording, so the first public launch leaves it out. Hum, the library, the quiz and practice do not
-  /// depend on it. Turn it on with:
+  /// Whether Talk mode (changing the song by typing or speaking to it) is part of this build. On by default. It
+  /// does nothing until the person agrees in the consent box (talk_consent.dart), which asks them to confirm they
+  /// are 18 or older and says their requests go to Google Gemini and, for voice, ElevenLabs. Both cost money per
+  /// use on the server side, so a build for a server without their keys can leave it out:
   ///
-  ///   flutter build macos --dart-define=TALK_MODE=true
-  static const bool talkMode = bool.fromEnvironment('TALK_MODE');
+  ///   flutter build macos --dart-define=TALK_MODE=false
+  ///
+  /// Hum, the library, the quiz and practice do not depend on it.
+  static const bool talkMode = bool.fromEnvironment('TALK_MODE', defaultValue: true);
 
   /// Where the backend lives, for a build that talks to a deployed server:
   ///

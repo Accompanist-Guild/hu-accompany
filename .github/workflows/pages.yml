@@ -1,0 +1,66 @@
+name: Publish website
+
+# Publishes the download page in website/ to GitHub Pages. It runs when the page changes, and by hand from
+# Actions > Publish website > Run workflow. One-time setup: Settings > Pages > Build and deployment > Source:
+# "GitHub Actions".
+on:
+  push:
+    branches: [main]
+    paths: ['website/**', 'scripts/check_website.py', 'scripts/test_website_js.js', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # The page links to the privacy policy, terms and support pages the server hosts, so it needs the server's
+      # address (the same SERVER_URL variable the Mac build uses). Written into a copy, not into the repository.
+      - name: Fill in the site settings
+        env:
+          SERVER_URL: ${{ vars.SERVER_URL }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -n "$SERVER_URL" ] && ! [[ "$SERVER_URL" =~ ^https://[^/[:space:]]+$ ]]; then
+            echo "::error::The SERVER_URL variable must look like https://host (it is '$SERVER_URL')"
+            exit 1
+          fi
+          if [ -z "$SERVER_URL" ]; then
+            echo "::warning::SERVER_URL is not set, so the page will have no Privacy Policy, Terms or Support links."
+          fi
+          cat > website/config.js <<JS
+          window.SITE = { repo: "$REPO", serverUrl: "$SERVER_URL" };
+          JS
+
+      # Stops a broken link or unbalanced page from being published.
+      - name: Check the pages
+        run: python3 scripts/check_website.py website
+
+      - name: Test the download script
+        run: node scripts/test_website_js.js
+
+      # The developer docs (website/*.md) stay in the repository and are not published.
+      - name: Assemble the site
+        run: rsync -a --exclude '*.md' website/ _site/
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v5

@@ -12,7 +12,7 @@ To check your download wasn't damaged, put the `.sha256` file beside the `.dmg` 
 
 - Hum mode, the shelf, the library and the quiz.
 - Practice feedback from a real instrument. It listens through the microphone, so allow the microphone when macOS asks.
-- Hum mode, the library and the quiz need an internet connection: they use the Hu Accompany server.
-- Talk mode (changing a song by typing or speaking to it) is not part of this version.
+- Songs, practice feedback, the library and the quiz need an internet connection: they use the Hu Accomponist server. Step-by-step guides are on the download page.
+- Talk mode: change a song by typing or speaking to it. It is for people 18 or older. The first time you use it the app explains what is sent and asks you to confirm your age and agree; until you do, nothing is sent. Your requests then go to Google Gemini and, if you speak, your voice to ElevenLabs. You can turn it off again in Settings.
 
 ---
