@@ -112,12 +112,12 @@ ol.steps li { counter-increment: s; position: relative; padding: 16px 0 16px 46p
 ol.steps li:first-child { border-top: 0; }
 ol.steps li::before {
   content: counter(s); position: absolute; left: 0; top: 16px; width: 30px; height: 30px; border-radius: 50%;
-  display: grid; place-items: center; background: var(--gold); color: #fffcf4; font-weight: 700; font-size: 0.9rem;
+  display: grid; place-items: center; background: #7d6122; color: #fffcf4; font-weight: 700; font-size: 0.9rem;
 }
 code { background: var(--code); padding: 2px 6px; border-radius: 6px; font: 0.82em ui-monospace, Menlo, monospace; word-break: break-word; }
 .note {
   margin: 16px 0 0; padding: 14px 16px; border-radius: var(--r-card); background: var(--code);
-  color: var(--muted); font-size: 0.93rem;
+  color: var(--text); font-size: 0.93rem;
 }
 
 footer { margin: 52px 0 40px; padding-top: 18px; border-top: 1px solid var(--line); text-align: center; color: var(--muted); font-size: 0.92rem; }
@@ -159,7 +159,7 @@ details.qa:last-of-type { border-bottom: 1px solid var(--line); }
 details.qa summary { cursor: pointer; font-weight: 600; }
 details.qa p { margin: 10px 0 0; }
 .cta { margin: 28px 0 0; }
-.cta .button { background: var(--gold); color: #fffcf4; }
+.cta .button { background: #7d6122; color: #fffcf4; }
 .herolinks { margin: 0 0 22px; font-size: 0.92rem; }
 .herolinks a { color: rgb(237 230 218 / 0.8); margin: 0 12px; text-decoration: none; }
 .herolinks a:hover { color: var(--light-gold); }

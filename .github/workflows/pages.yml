@@ -6,7 +6,7 @@ name: Publish website
 on:
   push:
     branches: [main]
-    paths: ['website/**', 'scripts/check_website.py', '.github/workflows/pages.yml']
+    paths: ['website/**', 'scripts/check_website.py', 'scripts/test_website_js.js', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:
@@ -49,11 +49,18 @@ jobs:
       - name: Check the pages
         run: python3 scripts/check_website.py website
 
+      - name: Test the download script
+        run: node scripts/test_website_js.js
+
+      # The developer docs (website/*.md) stay in the repository and are not published.
+      - name: Assemble the site
+        run: rsync -a --exclude '*.md' website/ _site/
+
       - uses: actions/configure-pages@v6
 
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: website
+          path: _site
 
       - id: deployment
         uses: actions/deploy-pages@v5
