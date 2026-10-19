@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:hu_accomponist/features/practice/Exercise.dart';
 import 'package:hu_accomponist/features/practice/Phrase_Assembler.dart';
 import 'package:hu_accomponist/features/practice/live_judge.dart';
+import 'package:hu_accomponist/features/practice/practice_prefs.dart';
 import 'package:hu_accomponist/features/practice/score_timeline.dart';
 import 'package:hu_accomponist/integrations/audio/Rust_Session.dart';
 import 'package:hu_accomponist/integrations/feedback/Phrase_send2_server.dart';
@@ -20,9 +21,10 @@ class ScorePracticeSettings {
 }
 
 /// One run through a score: loads its notes into Rust (following the
-/// player's tempo), counts the player in, colours each note as it is
-/// played ([LiveJudge]), and sends the phrases to the backend for the
-/// detailed feedback, which can mark more notes.
+/// player's tempo), counts the player in, judges each note as it is played
+/// ([LiveJudge]), and sends the phrases to the backend for the detailed
+/// feedback. A run can be paused and continued, started over, or started
+/// again from any note; the verdicts before that note stay.
 ///
 /// The score view is driven through [onLive]; [countIn] is exposed through
 /// [ChangeNotifier] for the count-in overlay.
@@ -33,7 +35,10 @@ class ScorePracticeSession extends ChangeNotifier {
     required this.settings,
     required this.onLive,
     required this.onReport,
-  }) : notes = timeline.layout(bpm: settings.bpm, hands: settings.hands);
+    Strictness strictness = Strictness.normal,
+  }) : notes = timeline.layout(bpm: settings.bpm, hands: settings.hands) {
+    judge = LiveJudge(notes, bpm: settings.bpm, strictness: strictness);
+  }
 
   final PieceInfo piece;
   final ScoreTimeline timeline;
@@ -46,10 +51,17 @@ class ScorePracticeSession extends ChangeNotifier {
   /// Each judged phrase, in order.
   final void Function(PhraseReport report) onReport;
 
+  late final LiveJudge judge;
+
+  /// Every phrase the backend judged this run.
+  final List<PhraseReport> reports = [];
+
   /// The count-in beat being shown (1..), or null.
   int? countIn;
 
-  late LiveJudge _judge = LiveJudge(notes, bpm: settings.bpm);
+  /// The note this stretch of playing starts from (null = the first).
+  int? fromId;
+
   PhraseAssembler _assembler = PhraseAssembler(const []);
   String? _sessionId;
   Future<void> _sendQueue = Future.value();
@@ -76,20 +88,34 @@ class ScorePracticeSession extends ChangeNotifier {
     return (beats: top, beat: Duration(microseconds: (ms * 1000).round()));
   }
 
-  /// Runs before capture starts: loads the score into Rust and counts the
-  /// player in. Returns an error message, or null to go ahead. Resolves one
-  /// beat early, so the microphone is already open for the first note.
-  Future<String?> prepare() async {
-    if (notes.isEmpty) return 'There are no notes to play for these hands.';
+  /// The notes from [fromId] on: what Rust listens for this stretch.
+  List<ExpectedNote> _remaining() {
+    final from = fromId == null ? null : judge.note(fromId!);
+    return [
+      for (final n in notes)
+        if (from == null || n.startMs >= from.startMs) n,
+    ];
+  }
+
+  /// Runs before capture starts: takes back the verdicts from [from] on
+  /// ([fromId] when not given; the first note for a fresh run), loads the
+  /// notes from there into Rust and counts the player in. Returns an error
+  /// message, or null to go ahead. Resolves one beat early, so the
+  /// microphone is already open for the first note.
+  Future<String?> prepare({int? from, bool keepFrom = false}) async {
+    if (!keepFrom) fromId = from;
+    final remaining = _remaining();
+    if (remaining.isEmpty) return 'There are no notes left to play from here.';
     final error = await RustSession.load(
-      ScoreTimeline.pieceData(piece.title, settings.bpm, notes),
+      ScoreTimeline.pieceData(piece.title, settings.bpm, remaining),
     );
     if (error != null) return error;
 
-    _judge = LiveJudge(notes, bpm: settings.bpm);
-    _assembler = PhraseAssembler(notes);
-    _sessionId = null;
-    onLive(LiveUpdate(due: _judge.due() ?? const []));
+    onLive(judge.restartFrom(fromId));
+    // Phrases from the restart on will be judged again.
+    final fromPhrase = (fromId == null ? 0 : judge.note(fromId!)?.bar ?? 0) + 1;
+    reports.removeWhere((r) => r.phrase >= fromPhrase);
+    _assembler = PhraseAssembler(remaining);
 
     final (:beats, :beat) = _countIn;
     for (var i = 1; i < beats; i++) {
@@ -103,36 +129,33 @@ class ScorePracticeSession extends ChangeNotifier {
     if (_disposed) return 'cancelled';
     _setCountIn(beats);
     _countInTimer = Timer(beat, () => _setCountIn(null));
+    _ticker?.cancel();
     _ticker = Timer.periodic(_tick, (_) => _refreshDue());
     return null;
   }
 
+  /// Continuing after a pause: from the first note not played yet.
+  Future<String?> resume() => prepare(from: judge.next ?? fromId);
+
   /// A batch from Rust's notesStream.
   void onRustBatch(List<Notes> batch) {
     if (_disposed) return;
-    final update = _judge.add(batch);
-    final due = _judge.due();
+    final update = judge.add(batch);
+    final due = judge.due();
     if (!update.isEmpty || due != null) {
-      onLive(
-        LiveUpdate(
-          marks: update.marks,
-          played: update.played,
-          mistakes: update.mistakes,
-          due: due,
-        ),
-      );
+      onLive(LiveUpdate(marks: update.marks, played: update.played, due: due));
     }
     _enqueue(_assembler.add(batch));
   }
 
   void _refreshDue() {
-    final due = _judge.due();
+    final due = judge.due();
     if (due != null && !_disposed) onLive(LiveUpdate(due: due));
   }
 
-  /// Recording stopped: nothing is due any more, and whatever is unsent is
-  /// judged, including the note that may still have been sounding.
-  Future<void> finish() async {
+  /// The microphone stopped (a pause or the end): nothing is due any more,
+  /// and whatever is unsent is judged, including a note still sounding.
+  Future<void> stopListening() async {
     _ticker?.cancel();
     _countInTimer?.cancel();
     _setCountIn(null);
@@ -140,7 +163,13 @@ class ScorePracticeSession extends ChangeNotifier {
     final leftovers = await RustSession.leftovers();
     if (_disposed) return;
     onRustBatch(leftovers);
+    if (!_disposed) onLive(const LiveUpdate(due: []));
     _enqueue(_assembler.flush());
+  }
+
+  /// The run is over: everything heard is judged and sent.
+  Future<void> finish() async {
+    await stopListening();
     await _sendQueue;
   }
 
@@ -166,7 +195,10 @@ class ScorePracticeSession extends ChangeNotifier {
     );
     if (report == null || _disposed) return;
     _sessionId ??= report.sessionId;
-    final update = _judge.review(report);
+    reports
+      ..removeWhere((r) => r.phrase == report.phrase)
+      ..add(report);
+    final update = judge.review(report);
     if (!update.isEmpty) onLive(update);
     onReport(report);
   }

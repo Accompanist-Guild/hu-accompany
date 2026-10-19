@@ -23,11 +23,14 @@ import 'package:hu_accomponist/shared/theme/Design_Tokens.dart';
 import 'package:hu_accomponist/features/practice/Practice_Tool_Buttons.dart';
 import 'package:hu_accomponist/features/practice/Practice_Pen_Panel.dart';
 import 'package:hu_accomponist/features/practice/Practice_Settings_Drawer.dart';
-import 'package:hu_accomponist/features/practice/phrase_feedback_overlay.dart';
 import 'package:hu_accomponist/features/practice/Exercise_Display.dart';
 import 'package:hu_accomponist/features/practice/exercise_picker.dart';
 import 'package:hu_accomponist/features/practice/Exercise_Session.dart';
 import 'package:hu_accomponist/features/practice/live_judge.dart';
+import 'package:hu_accomponist/features/practice/play_along_guide.dart';
+import 'package:hu_accomponist/features/practice/practice_prefs.dart';
+import 'package:hu_accomponist/features/practice/practice_prefs_sheet.dart';
+import 'package:hu_accomponist/features/practice/score_practice_widgets.dart';
 import 'package:hu_accomponist/features/practice/score_practice_session.dart';
 import 'package:hu_accomponist/features/practice/score_practice_sheet.dart';
 import 'package:hu_accomponist/features/practice/score_timeline.dart';
@@ -176,9 +179,56 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
   /// last phrases can still come back and mark their notes.
   ScorePracticeSession? _scoreSession;
 
-  /// What the player just got wrong, shown briefly over the score.
-  String? _mistake;
-  Timer? _mistakeTimer;
+  final RecorderController _recorder = RecorderController();
+
+  /// Listening is stopped part-way through a run (the recorder's Pause).
+  bool _paused = false;
+
+  /// A tapped note is taken as the place to start from.
+  bool _picking = false;
+
+  /// Where the next run starts (null: the beginning), chosen beforehand.
+  int? _startFromId;
+
+  /// Where to go on from after a pause, picked on the score.
+  int? _resumeFromId;
+
+  bool get _listening => _isRecording && !_paused;
+
+  /// The play-along guide's step on screen, or null.
+  int? _guideStep;
+  bool _guideChecked = false;
+  final _recorderKey = GlobalKey();
+  final _scoreKey = GlobalKey();
+  final _settingsKey = GlobalKey();
+  final _helpKey = GlobalKey();
+
+  late final Map<GuideTarget, GlobalKey> _guideTargets = {
+    GuideTarget.recorder: _recorderKey,
+    GuideTarget.score: _scoreKey,
+    GuideTarget.settings: _settingsKey,
+    GuideTarget.help: _helpKey,
+  };
+
+  /// The first time a score is ready to play along with, the guide starts.
+  Future<void> _maybeStartGuide() async {
+    if (_guideChecked || !_scoreReady) return;
+    _guideChecked = true;
+    if (await const PlayAlongGuideStore().hasSeen()) return;
+    if (mounted && !_isRecording) setState(() => _guideStep = 0);
+  }
+
+  void _endGuide() {
+    const PlayAlongGuideStore().setSeen();
+    setState(() => _guideStep = null);
+  }
+
+  void _openHelp() => PlayAlongHelpSheet.show(
+    context,
+    onReplayGuide: () {
+      if (mounted && !_isRecording) setState(() => _guideStep = 0);
+    },
+  );
   final DrawingController _drawing = DrawingController();
 
   /// Call this from the Flutter-Rust-Bridge performance-result callback.
@@ -198,11 +248,16 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
 
   void _onRecordingChanged(bool isRecording) {
     if (mounted) {
-      setState(() => _isRecording = isRecording);
+      setState(() {
+        _isRecording = isRecording;
+        _paused = false;
+      });
     }
     if (!isRecording) {
       _exercise?.finish();
-      _scoreSession?.finish();
+      _stopPicking();
+      final session = _scoreSession;
+      if (session != null) _finishScore(session);
     }
     if (isRecording) {
       // A fresh recording gets a fresh session — the backend assigns the
@@ -312,6 +367,10 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
   LoadedScore? _score;
   bool get _hasScore => _score != null;
 
+  /// A score is showing whose notes can be played along with.
+  bool get _scoreReady =>
+      _exercise == null && _hasScore && !(_timeline?.isEmpty ?? true);
+
   // Kept as a stable field so picking another score reloads the same
   // WebView instead of rebuilding it.
   final ScoreOsmdController _osmd = ScoreOsmdController();
@@ -329,6 +388,10 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
     _endScoreSession();
     _timeline = null;
     _scoreSettings = null;
+    _startFromId = null;
+    _resumeFromId = null;
+    _picking = false;
+    _guideChecked = false;
     _score = selected;
     _osmd.setInk('[]'); // until this score's own ink is read
     if (selected != null) _loadInk(selected.summary.id);
@@ -412,7 +475,13 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
       current: _scoreSettings ?? _defaultSettings(timeline),
       action: action,
     );
-    if (chosen != null && mounted) setState(() => _scoreSettings = chosen);
+    if (chosen != null && mounted) {
+      setState(() {
+        // Another hand may not have the note the run was to start from.
+        if (chosen.hands != _scoreSettings?.hands) _startFromId = null;
+        _scoreSettings = chosen;
+      });
+    }
     return chosen;
   }
 
@@ -436,28 +505,148 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
       piece: _piece,
       timeline: timeline,
       settings: settings,
+      strictness: PracticePrefs.instance.strictness,
       onLive: _onScoreLive,
       onReport: _onExerciseReport,
     );
     setState(() {
       _scoreSession = session;
-      _mistake = null;
+      _paused = false;
+      _resumeFromId = null;
     });
+    _stopPicking();
     _osmd.resetLive();
-    final error = await session.prepare();
+    _osmd.setColors(PracticePrefs.instance.colors);
+    final error = await session.prepare(from: _startFromId);
     if (error != null && error != 'cancelled') _say(error);
     return error == null;
   }
 
+  /// Going on after a pause: from the note picked, or the next one due.
+  Future<bool> _resumeScore() async {
+    final session = _scoreSession;
+    if (session == null) return false;
+    _stopPicking();
+    final from = _resumeFromId;
+    _resumeFromId = null;
+    final error = from == null
+        ? await session.resume()
+        : await session.prepare(from: from);
+    if (error != null && error != 'cancelled') _say(error);
+    if (error == null && mounted) setState(() => _paused = false);
+    return error == null;
+  }
+
+  /// The recorder's swiped-out buttons (see [RecorderAction]).
+  Future<bool> _onRecorderAction(RecorderAction action) async {
+    final session = _scoreSession;
+    if (session == null) return false;
+    await session.stopListening();
+    if (!mounted) return false;
+    switch (action) {
+      case RecorderAction.pause:
+        setState(() => _paused = true);
+        return false;
+      case RecorderAction.fromNote:
+        setState(() => _paused = true);
+        _startPicking();
+        return false;
+      case RecorderAction.restart:
+        setState(() => _paused = false);
+        final error = await session.prepare(from: _startFromId);
+        if (error != null && error != 'cancelled') _say(error);
+        return error == null;
+    }
+  }
+
+  void _startPicking() {
+    _osmd.setPicking(true);
+    if (mounted) setState(() => _picking = true);
+  }
+
+  void _stopPicking() {
+    if (!_picking) return;
+    _osmd.setPicking(false);
+    if (mounted) setState(() => _picking = false);
+  }
+
+  /// Before a run, from the drawer: tap where the next run starts.
+  void _chooseStart() {
+    if (_timeline == null || _timeline!.isEmpty) return;
+    _startPicking();
+  }
+
+  /// A note tapped while picking where to start. A repeated note is played
+  /// more than once: before a run, its first time; after a pause, the time
+  /// at or just before where the player had got to.
+  void _onNotePick(List<int> ids) {
+    if (!_picking) return;
+    final timeline = _timeline;
+    if (timeline == null) return;
+    final settings = _scoreSettings ?? _defaultSettings(timeline);
+    final playable = {
+      for (final n in timeline.layout(bpm: settings.bpm, hands: settings.hands))
+        n.noteId: n.startMs,
+    };
+    final candidates = ids.where(playable.containsKey).toList()
+      ..sort((a, b) => playable[a]!.compareTo(playable[b]!));
+    if (candidates.isEmpty) {
+      _say("That note isn't in the hands you're playing.");
+      return;
+    }
+    final session = _scoreSession;
+    if (session != null && _paused) {
+      final next = session.judge.next;
+      final reached = next == null
+          ? double.infinity
+          : session.judge.note(next)!.startMs;
+      final before = candidates.where((id) => playable[id]! <= reached);
+      _resumeFromId = before.isEmpty ? candidates.first : before.last;
+      _stopPicking();
+      _recorder.resume();
+      return;
+    }
+    setState(() => _startFromId = candidates.first);
+    _stopPicking();
+  }
+
+  /// A note tapped while not playing: what happened to it, beside it.
+  void _onNoteTap(List<int> ids) {
+    final session = _scoreSession;
+    if (session == null || _listening || _picking) return;
+    final marked = ids.where(session.judge.marks.containsKey).toList();
+    if (marked.isEmpty) return;
+    final id = marked.reduce((a, b) => a > b ? a : b);
+    final note = session.judge.note(id)!;
+    final verdict = session.judge.marks[id]!;
+    _osmd.showTip(id, [
+      '${verdict.describe(note)} · bar ${LiveJudge.bar(note)}',
+      ?ScoreSummarySheet.tipFor(session, id),
+    ]);
+  }
+
+  /// The run is over: once its last phrases are judged, the summary.
+  Future<void> _finishScore(ScorePracticeSession session) async {
+    await session.finish();
+    if (!mounted || !identical(session, _scoreSession)) return;
+    final id = await ScoreSummarySheet.show(context, session);
+    if (id != null && mounted) _osmd.spotlight(id);
+  }
+
   void _onScoreLive(LiveUpdate update) {
     if (!mounted) return;
-    _osmd.live(update, follow: _isRecording);
-    if (update.mistakes.isEmpty) return;
-    _mistakeTimer?.cancel();
-    setState(() => _mistake = update.mistakes.last);
-    _mistakeTimer = Timer(const Duration(milliseconds: 2600), () {
-      if (mounted) setState(() => _mistake = null);
-    });
+    _osmd.live(update, follow: _listening);
+  }
+
+  void _onPrefsChanged() => _osmd.setColors(PracticePrefs.instance.colors);
+
+  /// The bar a note is printed in, for the banners.
+  int? _barOf(int? id) {
+    if (id == null) return null;
+    for (final n in _timeline?.notes ?? const <TimelineNote>[]) {
+      if (n.id == id) return n.measureNumber < 1 ? 1 : n.measureNumber;
+    }
+    return null;
   }
 
   void _onExerciseReport(PhraseReport report) {
@@ -504,7 +693,7 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
   void dispose() {
     _exercise?.dispose();
     _scoreSession?.dispose();
-    _mistakeTimer?.cancel();
+    PracticePrefs.instance.removeListener(_onPrefsChanged);
     _drawing.dispose();
     _osmd.canUndoInk.dispose();
     super.dispose();
@@ -519,7 +708,13 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
     };
     _osmd.onTimeline = (timeline) {
       if (mounted) setState(() => _timeline = timeline);
+      _osmd.setColors(PracticePrefs.instance.colors);
+      _maybeStartGuide();
     };
+    _osmd.onNoteTap = _onNoteTap;
+    _osmd.onNotePick = _onNotePick;
+    PracticePrefs.instance.addListener(_onPrefsChanged);
+    PracticePrefs.instance.load();
     _setScore(widget.selected);
   }
 
@@ -574,6 +769,22 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
           Navigator.pop(context);
           _openExercisePicker();
         },
+        onPlayAlong: _scoreReady && !_isRecording
+            ? () {
+                Navigator.pop(context);
+                _chooseSettings(action: 'Done');
+              }
+            : null,
+        onStartFrom: _scoreReady && !_isRecording
+            ? () {
+                Navigator.pop(context);
+                _chooseStart();
+              }
+            : null,
+        onNoteSettings: () {
+          Navigator.pop(context);
+          PracticePrefsSheet.show(context);
+        },
       ),
       body: SafeArea(
         child: Stack(
@@ -605,11 +816,16 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
                 // uses nearly the whole width. Turned sideways (as many
                 // players hold a phone on a stand), they move to the sides
                 // and the score gets nearly the whole height.
-                padding:
-                    MediaQuery.orientationOf(context) == Orientation.landscape
-                    ? const EdgeInsets.fromLTRB(76, Space.xs, 76, Space.xs)
-                    : const EdgeInsets.fromLTRB(Space.sm, 72, Space.sm, 82),
+                padding: _landscape(context)
+                    ? const EdgeInsets.fromLTRB(76, Space.xxs, 76, Space.xxs)
+                    : EdgeInsets.fromLTRB(
+                        Space.sm,
+                        70,
+                        Space.sm,
+                        InShellPage.of(context) ? Space.sm : 76,
+                      ),
                 child: Container(
+                  key: _scoreKey,
                   decoration: BoxDecoration(
                     color: PracticePalette.paper,
                     borderRadius: Radii.cardRadius,
@@ -699,7 +915,52 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
                       if (_scoreSession != null)
                         Positioned.fill(
                           child: IgnorePointer(
-                            child: _ScoreCountIn(session: _scoreSession!),
+                            child: ScoreCountIn(session: _scoreSession!),
+                          ),
+                        ),
+
+                      // The latest phrase's verdict, one thin line.
+                      Positioned(
+                        top: Space.xs,
+                        left: Space.sm,
+                        right: Space.sm,
+                        child: IgnorePointer(
+                          child: Center(
+                            child: PhraseStrip(report: _latestReport),
+                          ),
+                        ),
+                      ),
+
+                      // Picking a note to start from, or where the next run starts.
+                      if (_picking || (_startFromId != null && !_isRecording))
+                        Positioned(
+                          top: 40,
+                          left: 0,
+                          right: 0,
+                          child: Center(
+                            child: _picking
+                                ? ScoreBanner(
+                                    icon: Icons.ads_click_rounded,
+                                    text: 'Tap the note to start from',
+                                    onClose: _stopPicking,
+                                  )
+                                : ScoreBanner(
+                                    icon: Icons.flag_rounded,
+                                    text:
+                                        'Starts at bar ${_barOf(_startFromId)}',
+                                    onClose: () =>
+                                        setState(() => _startFromId = null),
+                                  ),
+                          ),
+                        ),
+
+                      if (_exercise == null && _hasScore)
+                        Positioned(
+                          right: Space.sm,
+                          bottom: Space.sm,
+                          child: ZoomButtons(
+                            onZoomIn: () => _osmd.zoomBy(1.2),
+                            onZoomOut: () => _osmd.zoomBy(1 / 1.2),
                           ),
                         ),
                     ],
@@ -728,11 +989,39 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
             Positioned(
               top: 16,
               left: 22,
-              child: PracticeToolButton(
-                icon: Icons.tune_rounded,
-                active: false,
-                color: PracticePalette.gold,
-                onTap: () => _scaffoldKey.currentState?.openDrawer(),
+              child: Flex(
+                // Upright, along the top; sideways, down the left edge.
+                direction: _landscape(context)
+                    ? Axis.vertical
+                    : Axis.horizontal,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  PracticeToolButton(
+                    key: _settingsKey,
+                    icon: Icons.tune_rounded,
+                    active: false,
+                    color: PracticePalette.gold,
+                    onTap: () => _scaffoldKey.currentState?.openDrawer(),
+                  ),
+                  const SizedBox(width: Space.xs, height: Space.xs),
+                  PracticeToolButton(
+                    icon: Icons.search_rounded,
+                    active: false,
+                    color: PracticePalette.gold,
+                    onTap: _goToNavPage,
+                  ),
+                  // The colour key and the guide, once there is a score.
+                  if (_exercise == null && _hasScore) ...[
+                    const SizedBox(width: Space.xs, height: Space.xs),
+                    PracticeToolButton(
+                      key: _helpKey,
+                      icon: Icons.question_mark_rounded,
+                      active: false,
+                      color: PracticePalette.gold,
+                      onTap: _openHelp,
+                    ),
+                  ],
+                ],
               ),
             ),
 
@@ -742,7 +1031,11 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
             Positioned(
               top: 16,
               right: 22,
-              child: Row(
+              child: Flex(
+                direction: _landscape(context)
+                    ? Axis.vertical
+                    : Axis.horizontal,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   PracticeToolButton(
                     icon: Icons.edit_outlined,
@@ -757,7 +1050,7 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
                       });
                     },
                   ),
-                  const SizedBox(width: Space.xs),
+                  const SizedBox(width: Space.xs, height: Space.xs),
                   AnimatedBuilder(
                     animation: Listenable.merge([_drawing, _osmd.canUndoInk]),
                     builder: (_, _) => PracticeToolButton(
@@ -770,7 +1063,7 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
                       onTap: _inkOnScore ? _osmd.undoInk : _drawing.undo,
                     ),
                   ),
-                  const SizedBox(width: Space.xs),
+                  const SizedBox(width: Space.xs, height: Space.xs),
                   PracticeToolButton(
                     icon: Icons.palette_outlined,
                     active: _showPenSettings,
@@ -789,8 +1082,8 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
             // PEN SETTINGS
             // ─────────────────────────────────────────────
             Positioned(
-              top: 68,
-              right: 22,
+              top: _landscape(context) ? 16 : 68,
+              right: _landscape(context) ? 76 : 22,
               // Scales and fades out of the palette button rather than
               // appearing outright, so it reads as belonging to the
               // control that opened it.
@@ -833,77 +1126,20 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
               ),
             ),
 
-            // ─────────────────────────────────────────────
-            // WHAT WENT WRONG
-            // ─────────────────────────────────────────────
-            // Over the top of the score, clear of the tool buttons.
-            Positioned(
-              top: MediaQuery.orientationOf(context) == Orientation.landscape
-                  ? Space.xl
-                  : 104,
-              left: 0,
-              right: 0,
-              child: IgnorePointer(
-                child: Center(child: _MistakeCaption(text: _mistake)),
-              ),
-            ),
-
             // The draggable control owns its own Rust-bridge notesStream()
             // recording pipeline; it reports UI toggle state here and, per
             // phrase, hands the notes off for upload + feedback polling.
             Draggable_Recorder_Button(
+              key: _recorderKey,
               onToggle: _onRecordingChanged,
               onPhrase: _onPhraseReceived,
               onBeforeCapture: _beforeCapture,
               onError: _say,
               accent: PracticeSettingsDrawer.feedbackColor(_feedback),
-            ),
-
-            // ─────────────────────────────────────────────
-            // PHRASE FEEDBACK
-            // ─────────────────────────────────────────────
-            Positioned(
-              right: Space.lg,
-              bottom: 76,
-              child: PhraseFeedbackOverlay(
-                report: _latestReport,
-                // In an exercise, findings about a note show on that note.
-                include: _exercise == null
-                    ? null
-                    : (item) => !_exercise!.isAnchored(item),
-              ),
-            ),
-
-            // Tempo and hands for playing along, between the bottom buttons.
-            if (_exercise == null &&
-                _hasScore &&
-                _timeline != null &&
-                !_timeline!.isEmpty)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 28,
-                child: Center(
-                  child: _PlayAlongChip(
-                    settings: _scoreSettings ?? _defaultSettings(_timeline!),
-                    showHands: _timeline!.hasHands,
-                    enabled: !_isRecording,
-                    onTap: () => _chooseSettings(action: 'Done'),
-                  ),
-                ),
-              ),
-
-            // ─────────────────────────────────────────────
-            // SEARCH
-            // ─────────────────────────────────────────────
-            Positioned(
-              left: 22,
-              bottom: 20,
-              child: PracticeBottomButton(
-                icon: Icons.search_rounded,
-                color: PracticePalette.mutedBrown,
-                onTap: _goToNavPage,
-              ),
+              controller: _recorder,
+              actionsEnabled: _exercise == null && _scoreSession != null,
+              onAction: _onRecorderAction,
+              onBeforeResume: _resumeScore,
             ),
 
             // ─────────────────────────────────────────────
@@ -919,179 +1155,30 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
                   onTap: () => Navigator.of(context).maybePop(),
                 ),
               ),
+
+            // The play-along guide, over everything.
+            if (_guideStep != null)
+              Positioned.fill(
+                child: PlayAlongGuideOverlay(
+                  step: _guideStep!,
+                  targets: _guideTargets,
+                  onNext: () => setState(() => _guideStep = _guideStep! + 1),
+                  onBack: () => setState(() => _guideStep = _guideStep! - 1),
+                  onDone: _endGuide,
+                ),
+              ),
           ],
         ),
       ),
     );
   }
 
+  static bool _landscape(BuildContext context) =>
+      MediaQuery.orientationOf(context) == Orientation.landscape;
+
   static Widget _ornamentRule() => Container(
     width: 38,
     height: 1,
     color: PracticePalette.lightGold.withValues(alpha: 0.65),
   );
-}
-
-/// The tempo and hands a score is played along at; tap to change.
-class _PlayAlongChip extends StatelessWidget {
-  final ScorePracticeSettings settings;
-  final bool showHands;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  const _PlayAlongChip({
-    required this.settings,
-    required this.showHands,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final label = [
-      '${settings.bpm.round()} bpm',
-      if (showHands) settings.hands.label,
-    ].join('  ·  ');
-    return Semantics(
-      button: true,
-      label: 'Play along at $label. Tap to change.',
-      excludeSemantics: true,
-      child: AnimatedOpacity(
-        opacity: enabled ? 1 : 0.55,
-        duration: Motion.fast,
-        child: GestureDetector(
-          onTap: enabled ? onTap : null,
-          child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: Space.sm,
-              vertical: Space.xxs + 2,
-            ),
-            decoration: BoxDecoration(
-              color: PracticePalette.paper,
-              borderRadius: Radii.pillRadius,
-              border: Border.all(
-                color: PracticePalette.lightGold.withValues(alpha: 0.9),
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.speed_rounded,
-                  size: 15,
-                  color: PracticePalette.gold,
-                ),
-                const SizedBox(width: Space.xxs + 2),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: PracticePalette.brown,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// A short line about the latest mistake, fading in and out.
-class _MistakeCaption extends StatelessWidget {
-  final String? text;
-  const _MistakeCaption({required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    final text = this.text;
-    return AnimatedSwitcher(
-      duration: Motion.fast,
-      transitionBuilder: (child, animation) => FadeTransition(
-        opacity: animation,
-        child: SlideTransition(
-          position: Tween(
-            begin: const Offset(0, -0.25),
-            end: Offset.zero,
-          ).animate(animation),
-          child: child,
-        ),
-      ),
-      child: text == null
-          ? const SizedBox.shrink()
-          : Container(
-              key: ValueKey(text),
-              padding: const EdgeInsets.symmetric(
-                horizontal: Space.sm,
-                vertical: Space.xxs + 2,
-              ),
-              decoration: BoxDecoration(
-                color: PracticePalette.noteWrong.withValues(alpha: 0.1),
-                borderRadius: Radii.pillRadius,
-                border: Border.all(
-                  color: PracticePalette.noteWrong.withValues(alpha: 0.35),
-                ),
-              ),
-              child: Text(
-                text,
-                style: const TextStyle(
-                  color: PracticePalette.brown,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-    );
-  }
-}
-
-/// The count-in, beat by beat, over the score.
-class _ScoreCountIn extends StatelessWidget {
-  final ScorePracticeSession session;
-  const _ScoreCountIn({required this.session});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: session,
-      builder: (context, _) {
-        final beat = session.countIn;
-        return AnimatedOpacity(
-          opacity: beat == null ? 0 : 1,
-          duration: Motion.fast,
-          child: Center(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 160),
-              transitionBuilder: (child, animation) => ScaleTransition(
-                scale: Tween(begin: 0.7, end: 1.0).animate(animation),
-                child: FadeTransition(opacity: animation, child: child),
-              ),
-              child: Container(
-                key: ValueKey(beat),
-                width: 96,
-                height: 96,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: PracticePalette.paper.withValues(alpha: 0.92),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: PracticePalette.lightGold),
-                  boxShadow: Elevations.overlay(PracticePalette.brown),
-                ),
-                child: Text(
-                  beat == null ? '' : '$beat',
-                  style: const TextStyle(
-                    color: PracticePalette.gold,
-                    fontSize: 40,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
 }

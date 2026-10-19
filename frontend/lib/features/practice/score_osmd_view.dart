@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'package:hu_accomponist/features/practice/live_judge.dart';
+import 'package:hu_accomponist/features/practice/practice_prefs.dart';
 import 'package:hu_accomponist/features/practice/score_timeline.dart';
 
 /// Points at one specific note inside the score — zero-based measure,
@@ -55,6 +56,13 @@ class ScoreOsmdController {
   /// `assets/osmd/score_timeline.js`): what there is to play, and when. An
   /// empty timeline means the score has no notes this app can follow.
   void Function(ScoreTimeline timeline)? onTimeline;
+
+  /// A note was tapped: the timeline ids drawn there, nearest first (a
+  /// repeat draws several ids on one note).
+  void Function(List<int> ids)? onNoteTap;
+
+  /// A note was tapped while picking a place to start ([setPicking]).
+  void Function(List<int> ids)? onNotePick;
 
   /// The ink the next loaded score starts with (see [setInk]).
   String _inkJson = '[]';
@@ -139,22 +147,24 @@ class ScoreOsmdController {
     _call('OSMDBridge.resetColors();');
   }
 
-  /// Shows what is happening as the score is played: notes played right
-  /// (soft green) or wrong (red), the notes due now (they sway), and the
-  /// notes just played (they hop). Notes are timeline ids. [follow] keeps the
-  /// next note in view while a recording runs.
+  /// Shows what is happening as the score is played: how each note went
+  /// (see `OSMDBridge.live` in osmd_viewer.html for how each verdict is
+  /// drawn), the notes due now (they sway) and the notes just played (they
+  /// hop). Notes are timeline ids. [follow] keeps the next note in view while
+  /// a recording runs.
   void live(LiveUpdate update, {bool? follow}) {
-    final right = [
-      for (final e in update.marks.entries)
-        if (e.value == NoteMark.right) e.key,
-    ];
-    final wrong = [
-      for (final e in update.marks.entries)
-        if (e.value == NoteMark.wrong) e.key,
-    ];
     final payload = jsonEncode({
-      if (right.isNotEmpty) 'right': right,
-      if (wrong.isNotEmpty) 'wrong': wrong,
+      if (update.marks.isNotEmpty)
+        'marks': [
+          for (final e in update.marks.entries)
+            {
+              'id': e.key,
+              'r': e.value.result.name,
+              'played': ?e.value.playedMidi,
+              'shift': ?e.value.offShare,
+            },
+        ],
+      if (update.cleared.isNotEmpty) 'cleared': update.cleared,
       'due': ?update.due,
       if (update.played.isNotEmpty) 'played': update.played,
       'follow': ?follow,
@@ -162,8 +172,30 @@ class ScoreOsmdController {
     _call('OSMDBridge.live($payload);');
   }
 
-  /// Every note back to plain, for a new run.
+  /// Every note back as written, for a new run.
   void resetLive() => _call('OSMDBridge.resetLive();');
+
+  /// The colours notes turn (see [PracticePrefs]).
+  void setColors(NoteColors colors) => _call(
+    'OSMDBridge.setColors(${jsonEncode({'perfect': _hex(colors.perfect), 'close': _hex(colors.close), 'wrong': _hex(colors.wrong)})});',
+  );
+
+  /// A small note beside note [id]: [lines] first in bold, the rest smaller.
+  /// Hidden by the next tap or scroll, or [hideTip].
+  void showTip(int id, List<String> lines) =>
+      _call('OSMDBridge.showTip($id, ${jsonEncode(lines)});');
+
+  void hideTip() => _call('OSMDBridge.hideTip();');
+
+  /// Scrolls to note [id] and darkens and blurs everything else, until the
+  /// next tap or scroll.
+  void spotlight(int id) => _call('OSMDBridge.spotlight($id);');
+
+  /// While on, a tapped note goes to [onNotePick] instead of [onNoteTap].
+  void setPicking(bool on) => _call('OSMDBridge.setPicking($on);');
+
+  /// Zooms in (factor > 1) or out, keeping the middle of the screen in place.
+  void zoomBy(double factor) => _call('OSMDBridge.zoomBy($factor);');
 }
 
 /// Renders MusicXML with OpenSheetMusicDisplay inside a WebView. OSMD owns
@@ -264,6 +296,19 @@ class _ScoreOsmdViewState extends State<ScoreOsmdView> {
           '${timeline.bpm} bpm, ${timeline.timeSignature}',
         );
         widget.controller.onTimeline?.call(timeline);
+        break;
+      case 'noteTap':
+      case 'notePick':
+        final ids = [
+          for (final id in (data['payload']?['ids'] as List? ?? const []))
+            (id as num).toInt(),
+        ];
+        if (ids.isEmpty) break;
+        if (data['type'] == 'notePick') {
+          widget.controller.onNotePick?.call(ids);
+        } else {
+          widget.controller.onNoteTap?.call(ids);
+        }
         break;
       case 'ink':
         widget.controller._inkMessage(data['payload'] as Map<String, dynamic>?);

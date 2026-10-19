@@ -52,18 +52,41 @@ This is the way to test with a real instrument today.
 
 ## Playing along with a score
 
-1. Pick a score from the library (Search), e.g. Für Elise.
+1. Pick a score from the library (Search, top left), e.g. Für Elise.
 2. Tap the mic. The first time, choose a tempo (from the written one: Slow
-   60%, Steady 80%, As written) and, on a piano score, which hands. The chip
-   at the top of the score changes them later.
+   60%, Steady 80%, As written) and, on a piano score, which hands. The
+   settings drawer (top left) changes them later, and **Start from a note**
+   there lets you begin anywhere.
 3. A count-in of one bar follows. Start on the first note.
-4. As you play, each note turns **soft green** when it was right and **red**
-   when it was a wrong key, missed, or badly early or late. The notes due now
-   sway a little, and a note hops as it is heard. A line at the top says what
-   went wrong ("Played D instead of D♯ · bar 12"). The page scrolls to keep
-   the next note in view.
-5. Every few seconds the backend's verdict on the last phrase comes back as
-   the feedback card, and can turn more notes red.
+4. As you play, the notes show how it went (colours are set in Settings →
+   Note colours and timing, along with how strict timing is):
+
+   | | On the score |
+   |---|---|
+   | Perfect | the whole note **green** |
+   | Right key, a little off the beat | the whole note **yellow** |
+   | Wrong key | the written note stays; a hollow **red** note flashes at the key played |
+   | Missed | the whole note **red**, flashing |
+   | Early / late | the written note goes hollow; a hollow **red** note flashes to its left (early) or right (late), further for more |
+
+   Notes a repeat plays more than once are outlined instead, and filled a
+   little more each time through, in the colour of the latest. Mistakes
+   flash for about 3 seconds, then stay. The notes due now sway a little, a
+   note hops as it is heard, and the page scrolls to keep the next note in
+   view. The marks stay until the next run.
+5. A thin line at the top of the score gives the backend's verdict on the
+   last few bars ("Bars 5–8 · 86 · 2 notes off the beat").
+6. **Swipe right on the recorder** for Pause (Finish while paused), Restart,
+   and From a note (tap a note to go on from; the marks before it stay).
+7. When you stop, a summary shows your score and every mistake. Tap one to
+   see its note on the score, spotlighted. Tap any marked note (paused or
+   after the run) for what happened to it.
+
+Zoom with **+ / −** on the score, or pinch.
+
+The first time a score is ready to play along with, a short guide walks
+through all of this over the real screen (`play_along_guide.dart`). The **?**
+button next to Search opens the colour key and replays the guide.
 
 The score follows your tempo, so you don't have to keep the written one, and
 waits if you stop.
@@ -161,10 +184,13 @@ how Rust, the backend and the page all refer to it.
 | File | Role |
 |---|---|
 | `features/practice/score_timeline.dart` | The timeline, laid out at a tempo for some hands. Bars are grouped into phrases of 4 s or more for the backend. |
-| `features/practice/score_practice_session.dart` | One run through a score: Rust (with `follow_tempo`), count-in, live judging, phrases to the backend. |
-| `features/practice/live_judge.dart` | Right or wrong per note, from Rust's records as they arrive; which notes are due; the backend's verdicts on top. |
+| `features/practice/score_practice_session.dart` | One run through a score: Rust (with `follow_tempo`), count-in, live judging, phrases to the backend; pause, restart and start from any note. |
+| `features/practice/live_judge.dart` | The verdict per note (perfect, close, early, late, wrong key, missed) from Rust's records as they arrive; which notes are due; the backend's verdicts on top. |
+| `features/practice/practice_prefs.dart` / `practice_prefs_sheet.dart` | Note colours and how strict timing is, kept on the device. |
 | `features/practice/score_practice_sheet.dart` | Tempo and hands. |
-| `assets/osmd/osmd_viewer.html` → `OSMDBridge.live` | Colours noteheads (a chord member by its rank in pitch), sways due notes, hops played ones, keeps the next note in view; all re-applied after every re-render (zoom, rotation). |
+| `features/practice/score_practice_widgets.dart` | The phrase strip, count-in, banners, zoom buttons, and the end-of-run summary. |
+| `features/practice/Draggable_Recorder_Button.dart` | The recorder; while recording, a swipe right shows Pause / Restart / From a note. |
+| `assets/osmd/osmd_viewer.html` → `OSMDBridge.live` | Draws each verdict on the engraving (whole note, hollow markers, repeat outlines, flashing), sways due notes, hops played ones, keeps the next note in view, shows a note's tip, spotlights a note, reports tapped notes; all re-applied after every re-render (zoom, rotation). |
 
 The store-review URLs and support email are in `config/app_constants.dart`
 and can be set at build time, e.g.

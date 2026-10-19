@@ -14,6 +14,15 @@ class PracticeSettingsDrawer extends StatelessWidget {
   final VoidCallback onClearAnnotations;
   final VoidCallback onOpenExercises;
 
+  /// Tempo and hands for playing along with the score (null: no score).
+  final VoidCallback? onPlayAlong;
+
+  /// Choose the note the next run starts from (null: not now).
+  final VoidCallback? onStartFrom;
+
+  /// Note colours and how strict timing is.
+  final VoidCallback? onNoteSettings;
+
   const PracticeSettingsDrawer({
     super.key,
     required this.isRecording,
@@ -22,6 +31,9 @@ class PracticeSettingsDrawer extends StatelessWidget {
     required this.onOpenLibrary,
     required this.onClearAnnotations,
     required this.onOpenExercises,
+    this.onPlayAlong,
+    this.onStartFrom,
+    this.onNoteSettings,
   });
 
   static Color feedbackColor(PhraseFeedback feedback) => switch (feedback) {
@@ -95,6 +107,24 @@ class PracticeSettingsDrawer extends StatelessWidget {
               label: 'Practise an exercise',
               onTap: onOpenExercises,
             ),
+            if (onPlayAlong != null)
+              _DrawerAction(
+                icon: Icons.speed_rounded,
+                label: 'Tempo and hands',
+                onTap: onPlayAlong!,
+              ),
+            if (onStartFrom != null)
+              _DrawerAction(
+                icon: Icons.ads_click_rounded,
+                label: 'Start from a note',
+                onTap: onStartFrom!,
+              ),
+            if (onNoteSettings != null)
+              _DrawerAction(
+                icon: Icons.palette_outlined,
+                label: 'Note colours and timing',
+                onTap: onNoteSettings!,
+              ),
             _DrawerAction(
               icon: Icons.layers_clear_outlined,
               label: 'Clear annotations',
@@ -139,10 +169,7 @@ class _StatusRow extends StatelessWidget {
         Expanded(
           child: Text(
             label,
-            style: const TextStyle(
-              color: PracticePalette.brown,
-              fontSize: 14,
-            ),
+            style: const TextStyle(color: PracticePalette.brown, fontSize: 14),
           ),
         ),
       ],

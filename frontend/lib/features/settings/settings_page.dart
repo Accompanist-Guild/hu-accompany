@@ -9,6 +9,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:hu_accomponist/config/app_constants.dart';
 import 'package:hu_accomponist/features/hum/file_sharer.dart';
 import 'package:hu_accomponist/features/hum/talk_consent.dart';
+import 'package:hu_accomponist/features/practice/practice_prefs_sheet.dart';
 import 'package:hu_accomponist/features/shell/shell_controller.dart';
 import 'package:hu_accomponist/integrations/auth/auth_controller.dart';
 import 'package:hu_accomponist/integrations/links/link_opener.dart';
@@ -335,6 +336,17 @@ class _SettingsPageState extends State<SettingsPage> {
                   icon: Icons.school_outlined,
                   label: 'Replay the tutorial',
                   onTap: _replayTutorial,
+                ),
+              ],
+            ),
+            _Section(
+              title: 'Practice',
+              rows: [
+                _SettingsRow(
+                  icon: Icons.palette_outlined,
+                  label: 'Note colours and timing',
+                  subtitle: 'How strict timing is, and what colour notes turn',
+                  onTap: () => PracticePrefsSheet.show(context),
                 ),
               ],
             ),

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hu_accomponist/features/practice/Exercise.dart';
 import 'package:hu_accomponist/features/practice/Phrase_Assembler.dart';
 import 'package:hu_accomponist/features/practice/live_judge.dart';
+import 'package:hu_accomponist/features/practice/practice_prefs.dart';
 import 'package:hu_accomponist/features/practice/score_timeline.dart';
 import 'package:hu_accomponist/integrations/feedback/Phrase_send2_server.dart';
 import 'package:hu_accomponist/integrations/feedback/Pull_back_phrase.dart';
@@ -146,15 +147,41 @@ void main() {
       judge = LiveJudge(notes, bpm: 72);
     });
 
+    NoteResult? result(int id) => judge.marks[id]?.result;
+
     test('before anything is played, the opening note is due', () {
       expect(judge.due(now: t0), [1]);
     });
 
-    test('a note played in time turns right and hops', () {
+    test('a note played on time is perfect, and hops', () {
       final update = judge.add([heard(1, 0)], now: t0);
-      expect(update.marks, {1: NoteMark.right});
+      expect(update.marks[1]!.result, NoteResult.perfect);
       expect(update.played, [1]);
-      expect(update.mistakes, isEmpty);
+    });
+
+    test('a little off is close; further off is early or late', () {
+      // At 72 bpm a beat is 833 ms: perfect within 83 ms; a semiquaver
+      // (208 ms) is close up to 125 ms.
+      judge.add([heard(1, 50)], now: t0);
+      judge.add([heard(2, 208 + 100)], now: t0);
+      judge.add([heard(3, 417 - 200)], now: t0);
+      judge.add([heard(4, 625 + 200)], now: t0);
+      expect(result(1), NoteResult.perfect);
+      expect(result(2), NoteResult.close);
+      expect(result(3), NoteResult.early);
+      expect(result(4), NoteResult.late);
+      expect(judge.marks[4]!.offMs, closeTo(200, 0.1));
+      expect(judge.marks[4]!.offShare, closeTo(200 / 208.3, 0.01));
+      expect(judge.marks[4]!.describe(notes[3]), 'D♯ came late by 200 ms');
+    });
+
+    test('how strict timing is can be chosen', () {
+      final relaxed = LiveJudge(notes, bpm: 72, strictness: Strictness.relaxed);
+      relaxed.add([heard(1, 150)], now: t0);
+      expect(relaxed.marks[1]!.result, NoteResult.perfect);
+      final any = LiveJudge(notes, bpm: 72, strictness: Strictness.anyTime);
+      any.add([heard(1, 2000)], now: t0);
+      expect(any.marks[1]!.result, NoteResult.perfect);
     });
 
     test('the note ending later changes nothing', () {
@@ -165,8 +192,9 @@ void main() {
     test('a note never played is missed once a later one is', () {
       judge.add([heard(1, 0)], now: t0);
       final update = judge.add([heard(3, 417)], now: t0); // note 2 skipped
-      expect(update.marks, {3: NoteMark.right, 2: NoteMark.wrong});
-      expect(update.mistakes, ['Missed D♯ · bar 1']);
+      expect(update.marks[2]!.result, NoteResult.missed);
+      expect(update.marks[3]!.result, NoteResult.perfect);
+      expect(update.marks[2]!.describe(notes[1]), 'D♯ was not played');
     });
 
     test('a note heard a moment after a later one is not counted missed', () {
@@ -177,17 +205,21 @@ void main() {
       }
       final first = judge.add([heard(10, 1666.7)], now: t0);
       expect(first.marks.containsKey(9), isFalse);
-      expect(judge.add([heard(9, 1670)], now: t0).marks, {9: NoteMark.right});
+      expect(
+        judge.add([heard(9, 1670)], now: t0).marks[9]!.result,
+        NoteResult.perfect,
+      );
     });
 
-    test('a wrong key turns the note it replaced red and says which', () {
+    test('a wrong key marks the note it replaced, with the key played', () {
       judge.add([heard(1, 0), heard(2, 208)], now: t0);
       // D (74) where E (76) is written, then the player carries on.
       final update = judge.add([heard(0, 420, hz: 587.33)], now: t0);
-      expect(update.marks, {3: NoteMark.wrong});
-      expect(update.mistakes, ['Played D instead of E · bar 1']);
+      expect(update.marks[3]!.result, NoteResult.wrong);
+      expect(update.marks[3]!.playedMidi, 74);
+      expect(update.marks[3]!.describe(notes[2]), 'Played D instead of E');
       final next = judge.add([heard(4, 625)], now: t0);
-      expect(next.marks, {4: NoteMark.right}, reason: 'note 3 is already red');
+      expect(next.marks.keys, [4], reason: 'note 3 stays a wrong note');
     });
 
     test('a wrong key then the right one is still a mistake', () {
@@ -195,21 +227,15 @@ void main() {
       judge.add([heard(0, 380, hz: 587.33)], now: t0);
       final update = judge.add([heard(3, 560)], now: t0);
       expect(update.marks.containsKey(3), isFalse);
-      expect(judge.marks[3], NoteMark.wrong);
+      expect(result(3), NoteResult.wrong);
     });
 
     test('the right key at the same moment as a "wrong" one is right', () {
       // The detector heard a neighbour as the note struck: not a mistake.
       judge.add([heard(1, 0), heard(2, 208)], now: t0);
       judge.add([heard(0, 410, hz: 587.33)], now: t0);
-      expect(judge.add([heard(3, 420)], now: t0).marks, {3: NoteMark.right});
-    });
-
-    test('a badly late note is wrong, and says so', () {
-      judge.add([heard(1, 0)], now: t0);
-      final update = judge.add([heard(2, 208 + 300)], now: t0);
-      expect(update.marks, {2: NoteMark.wrong});
-      expect(update.mistakes.single, 'D♯ came late · bar 1');
+      judge.add([heard(3, 420)], now: t0);
+      expect(result(3), NoteResult.perfect);
     });
 
     test('notes due follow the player on between reports', () {
@@ -224,6 +250,32 @@ void main() {
       );
     });
 
+    test('starting again from a note keeps what came before it', () {
+      judge.add([
+        heard(1, 0),
+        heard(2, 208),
+        heard(3, 417),
+        heard(4, 625),
+      ], now: t0);
+      final update = judge.restartFrom(3);
+      expect(update.cleared, [3, 4]);
+      expect(judge.marks.keys, [1, 2]);
+      expect(judge.next, 3);
+      expect(update.due, [3]);
+      // Notes before the restart point are not missed by playing on.
+      judge.add([heard(3, 417), heard(5, 833)], now: t0);
+      expect(result(4), NoteResult.missed);
+      expect(judge.marks.keys.toSet(), {1, 2, 3, 4, 5});
+    });
+
+    test('a run started part-way through ignores the notes before it', () {
+      judge.restartFrom(5);
+      judge.add([heard(5, 833), heard(6, 1042)], now: t0);
+      expect(judge.marks.keys.toSet(), {5, 6}, reason: 'notes 1-4 not missed');
+      judge.add([heard(1, 0)], now: t0);
+      expect(judge.marks.containsKey(1), isFalse);
+    });
+
     test('the backend can mark a missed note, but not one heard', () {
       judge.add([heard(1, 0)], now: t0);
       PhraseFeedbackItem finding(int id, String category, String issue) =>
@@ -234,7 +286,11 @@ void main() {
             severity: 'major',
             confidence: 1,
             message: '',
-            details: {'note_id': id, 'issue': issue},
+            details: {
+              'note_id': id,
+              'issue': issue,
+              'suggestion': 'Go slowly.',
+            },
           );
       final report = PhraseReport(
         piece: const PieceInfo(title: '', composer: '', composedDate: ''),
@@ -251,7 +307,17 @@ void main() {
         sessionId: 's',
         storedAt: '',
       );
-      expect(judge.review(report).marks, {2: NoteMark.wrong});
+      final update = judge.review(report);
+      expect(update.marks.keys, [2]);
+      expect(update.marks[2]!.result, NoteResult.missed);
+      expect(judge.findings[2]!.single.details['suggestion'], 'Go slowly.');
+    });
+
+    test('counts how the run went', () {
+      judge.add([heard(1, 0), heard(2, 208 + 100), heard(4, 625)], now: t0);
+      expect(judge.counts[NoteResult.perfect], 2);
+      expect(judge.counts[NoteResult.close], 1);
+      expect(judge.counts[NoteResult.missed], 1);
     });
   });
 
