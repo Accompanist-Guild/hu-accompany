@@ -129,15 +129,30 @@ stage_gcp() {
   done
 }
 
+# neonctl (v8) refuses to list or create projects without saying which organization, and prompts for it, which
+# fails in a script. Accounts have at least one (signing up makes one), so use the only one, or ask.
+neon_org() {
+  [ -n "${NEON_ORG_ID:-}" ] && return 0
+  local ids count
+  ids="$(neonctl orgs list --output json 2>/dev/null | json_get "' '.join(o['id'] for o in (d if isinstance(d, list) else d.get('organizations', [])))" || true)"
+  count="$(printf '%s' "$ids" | wc -w | tr -d ' ')"
+  if [ "$count" = 1 ]; then save NEON_ORG_ID "$ids"
+  elif [ "$count" -gt 1 ]; then
+    note "Your Neon account has several organizations: $ids"
+    ask NEON_ORG_ID "Which one should hold the database (paste its id)"; save NEON_ORG_ID "$NEON_ORG_ID"
+  fi
+}
+
 stage_neon() {
   say "neon: the Postgres database"
+  neon_org
   if [ -z "${NEON_PROJECT_ID:-}" ]; then
     local found
-    found="$(neonctl projects list --output json | json_get "next((p['id'] for p in (d['projects'] if isinstance(d, dict) else d) if p['name']=='$NEON_NAME'), '')")"
+    found="$(neonctl projects list ${NEON_ORG_ID:+--org-id "$NEON_ORG_ID"} --output json | json_get "next((p['id'] for p in (d['projects'] if isinstance(d, dict) else d) if p['name']=='$NEON_NAME'), '')")"
     if [ -n "$found" ]; then note "using existing Neon project $NEON_NAME"; save NEON_PROJECT_ID "$found"
     else
       note "creating Neon project $NEON_NAME"
-      save NEON_PROJECT_ID "$(neonctl projects create --name "$NEON_NAME" --output json | json_get "(d.get('project') or d)['id']")"
+      save NEON_PROJECT_ID "$(neonctl projects create ${NEON_ORG_ID:+--org-id "$NEON_ORG_ID"} --name "$NEON_NAME" --output json | json_get "(d.get('project') or d)['id']")"
     fi
   fi
   # The direct (not pooled) address: fine for Django, and what migrations want.
