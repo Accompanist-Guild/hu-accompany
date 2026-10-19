@@ -30,7 +30,7 @@ Set these once at **Settings > Secrets and variables > Actions**. The workflow p
 | `SERVER_URL` | Variable | The deployed backend, like `https://my-service-abc.a.run.app`. Must start with `https://` or the release fails. Unset, the app only looks for a server on the local network, which is no use to someone who downloads it. |
 | `APP_KEY` | **Secret** | The key the server expects (its `APP_API_KEY`; `setup.sh` prints how to read it). The app sends it with every request. **It ends up inside the downloadable app, so anyone can extract it**: it keeps casual traffic out, and the server's rate limits are the real protection. |
 | `PRIVACY_POLICY_URL`, `TERMS_OF_SERVICE_URL`, `SUPPORT_EMAIL` | Variables | The links in the app. Unset, they are placeholder `.example` addresses that don't open. The server serves `/privacy`, `/terms` and `/support`. |
-| `TALK_MODE` | Variable | Set to `true` to include Talk mode (changing a song by typing or speaking). Unset leaves it out, which is right for a first launch: it runs on Gemini and ElevenLabs, which cost money per use. The release notes (`.github/release-notes-macos.md`) say Talk mode is not included, so edit that line if you turn it on. |
+| `TALK_MODE` | Variable | Set to `true` to include Talk mode (changing a song by typing or speaking). Unset leaves it out, which is right for a first launch: it runs on Gemini and ElevenLabs, which cost money per use. The release notes (`.github/release-notes-macos.md`) say Talk mode is not included, so edit that line if you turn it on. **Turn on the server's `LEGAL_TALK_MODE=true` at the same time** (`backend/deploy/README.md`), so the privacy policy and terms describe what Gemini and ElevenLabs receive. |
 
 ## What this build is, and is not
 

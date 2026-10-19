@@ -75,7 +75,7 @@ The script's logic was tested against stand-in `gcloud`, `neonctl`, `wrangler`, 
 6. **Deploy:**
    ```bash
    PROJECT=<id> POSTGRES_HOST=<host> POSTGRES_DB=<db> POSTGRES_USER=<user> \
-   MUSICXML_BASE_URL=https://pub-xxxx.r2.dev SUPPORT_EMAIL=<your support address> BILLING_ACCOUNT=<id> BUDGET_USD=<amount> \
+   MUSICXML_BASE_URL=https://pub-xxxx.r2.dev SUPPORT_EMAIL=<your support address> LEGAL_PUBLISHER="<your name>" BILLING_ACCOUNT=<id> BUDGET_USD=<amount> \
    backend/deploy/cloud-run.sh          # DRY_RUN=1 prints the commands without running them
    ```
    It builds the image in Cloud Build, deploys with the flags above, then sets `ALLOWED_HOSTS` to the service's address and creates a budget alert.
@@ -83,7 +83,7 @@ The script's logic was tested against stand-in `gcloud`, `neonctl`, `wrangler`, 
 
 ## Environment variables (production)
 
-Required (the server refuses to start without them): `DJANGO_SECRET_KEY`, `ALLOWED_HOSTS`, `APP_API_KEY`, and `SUPPORT_EMAIL` (a real address: it is printed on the public privacy policy). Database: `POSTGRES_HOST`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `PGSSLMODE=require` for Neon. Also `MUSICXML_BASE_URL`, `GEMINI_API_KEY`, `ELEVENLABS_API_KEY`. Optional: `RATE_LIMIT_HUM_PER_MINUTE`, `RATE_LIMIT_DEFAULT_PER_MINUTE`, `HUM_TTL_HOURS`, `HUM_SWEEP_MINUTES`, `GUNICORN_THREADS`. See `backend/.env.example`.
+Required (the server refuses to start without them): `DJANGO_SECRET_KEY`, `ALLOWED_HOSTS`, `APP_API_KEY`, `SUPPORT_EMAIL` (a real address: it is printed on the public privacy policy) and `LEGAL_PUBLISHER` (the name the policy and terms give as the publisher). `LEGAL_ACCOUNTS`, `LEGAL_TALK_MODE` and `LEGAL_APP_STORE` (all `false` unless set) switch the matching parts of the policy and terms on: turn `LEGAL_TALK_MODE` on in step with the app's `TALK_MODE` build setting, because the policy then has to say what Gemini and ElevenLabs receive. Database: `POSTGRES_HOST`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `PGSSLMODE=require` for Neon. Also `MUSICXML_BASE_URL`, `GEMINI_API_KEY`, `ELEVENLABS_API_KEY`. Optional: `RATE_LIMIT_HUM_PER_MINUTE`, `RATE_LIMIT_DEFAULT_PER_MINUTE`, `HUM_TTL_HOURS`, `HUM_SWEEP_MINUTES`, `GUNICORN_THREADS`. See `backend/.env.example`.
 
 ## Try the image on your own machine
 

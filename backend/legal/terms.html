@@ -1,13 +1,14 @@
 <p class="meta">Effective {{EFFECTIVE_DATE}}</p>
 
-<p>These terms are an agreement between you and {{PUBLISHER}} ("we", "us") about your use of {{APP_NAME}} and its server (together, the "Service"). By creating an account or using the Service you agree to them. If you do not agree, please do not use the Service. Our <a href="/privacy">Privacy Policy</a> explains how we handle your information.</p>
+<p>These terms are an agreement between you and {{PUBLISHER}} ("we", "us") about your use of {{APP_NAME}} and its server (together, the "Service"). By <!--if accounts-->creating an account or <!--/if-->using the Service you agree to them. If you do not agree, please do not use the Service. Our <a href="/privacy">Privacy Policy</a> explains how we handle your information.</p>
 
 <h2>Who may use the Service</h2>
-<p>You must be at least 13 years old, or older if the law where you live requires it. If you are under the age of majority where you live, you need a parent or guardian's permission. Give us accurate account details, keep your password to yourself, and tell us if you think someone else has used your account. You are responsible for what happens under your account.</p>
-<p><strong>Talk mode is for people 18 or older.</strong> It sends what you type or say to Google Gemini and ElevenLabs, and their terms require that the people using services built on them are adults. The app asks you to confirm that you are 18 or older before Talk mode works. The rest of the app does not need it.</p>
+<p>You must be at least 13 years old, or older if the law where you live requires it. If you are under the age of majority where you live, you need a parent or guardian's permission. <!--if accounts-->Give us accurate account details, keep your password to yourself, and tell us if you think someone else has used your account. You are responsible for what happens under your account.<!--/if--></p>
+<!--if talk--><p><strong>Talk mode is for people 18 or older.</strong> It sends what you type or say to Google Gemini and ElevenLabs, and their terms require that the people using services built on them are adults. The app asks you to confirm that you are 18 or older before Talk mode works. The rest of the app does not need it.</p>
+<!--/if-->
 
 <h2>What the Service does</h2>
-<p>The Service listens while you practise and gives you automated feedback on your playing, turns your humming into a song you can edit by typing or speaking, and offers a library of sheet music and music quizzes.</p>
+<p>The Service listens while you practise and gives you automated feedback on your playing, turns your humming into a song you can <!--if talk-->edit by typing or speaking<!--/if--><!--if !talk-->play along with<!--/if-->, and offers a library of sheet music and music quizzes.</p>
 
 <h2>Your content</h2>
 <p>Your recordings, hums, songs and requests are "Your Content". You keep ownership of Your Content. You give us a limited, non-exclusive permission to process, store and send it as needed to run the Service for you, including to the service providers named in our Privacy Policy. You are responsible for having the right to use the tunes and recordings you submit.</p>
@@ -17,24 +18,24 @@
 <p>The score library is a selection from <a href="https://doi.org/10.5281/zenodo.13763756">PDMX</a>, a public-domain MusicXML dataset ("PDMX: A Large-Scale Public Domain MusicXML Dataset for Symbolic Music Processing", Long et al., 2024), which is licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. We made changes: we kept only a small part of it.</p>
 <p>The dataset's public-domain labels are chosen by the people who uploaded the scores, and are not checked by its authors. So we screen the library ourselves: we offer only scores that the dataset does not flag for a licence conflict and whose composer lived long enough ago that the music is in the public domain. A screen like this can still make mistakes. Scores belong to their respective owners and are provided for personal practice. We do not guarantee that any score is accurate, complete or error-free. If you believe a score should not be in the library, write to us and we will remove it promptly.</p>
 
-<h2>Automated feedback and artificial intelligence</h2>
-<p>Feedback on your playing is produced automatically by software and can be wrong. It is guidance for practice and not professional music teaching, and we are not responsible for decisions you make because of it. Talk mode uses artificial intelligence services run by other companies (see the Privacy Policy). Their answers can be inaccurate or unsuitable, and you should not put sensitive personal information into your requests.</p>
+<h2>Automated feedback<!--if talk--> and artificial intelligence<!--/if--></h2>
+<p>Feedback on your playing is produced automatically by software and can be wrong. It is guidance for practice and not professional music teaching, and we are not responsible for decisions you make because of it.<!--if talk--> Talk mode uses artificial intelligence services run by other companies (see the Privacy Policy). Their answers can be inaccurate or unsuitable, and you should not put sensitive personal information into your requests.<!--/if--></p>
 
 <h2>Acceptable use</h2>
 <p>You agree not to:</p>
 <ul>
   <li>break the law, or use the Service to harass, threaten or harm anyone;</li>
   <li>submit content you have no right to use, or that is unlawful or abusive;</li>
-  <li>try to get around the Service's limits or security, including its sign-in, key checks and rate limits;</li>
+  <li>try to get around the Service's limits or security, including its <!--if accounts-->sign-in, <!--/if-->key checks and rate limits;</li>
   <li>overload the Service, scrape it, or reverse-engineer it except where the law lets you;</li>
-  <li>use the Service to build a competing product, or to spend the AI services' capacity on something other than editing your own song.</li>
+  <li>use the Service to build a competing product<!--if talk-->, or to spend the AI services' capacity on something other than editing your own song<!--/if-->.</li>
 </ul>
 
 <h2>Our rights</h2>
-<p>The app, its software, design and name belong to us or our licensors. We give you a limited, revocable, non-exclusive, non-transferable licence to use the app on Apple devices you own or control, for your personal use. The app includes open-source software under its own licences, which you can see in the app under Settings, then Open-source licenses.</p>
+<p>The app, its software, design and name belong to us or our licensors. We give you a limited, revocable, non-exclusive, non-transferable licence to use the app on devices you own or control, for your personal use. The app includes open-source software under its own licences, which you can see in the app under Settings, then Open-source licenses.</p>
 
 <h2>Ending your use</h2>
-<p>You can stop at any time, and you can delete your account in the app under Settings, then Delete account. We may suspend or end your access if you break these terms or if we need to protect the Service or other people. Parts of these terms that by their nature should continue (such as the disclaimers, the limits on liability and the governing law) continue after your access ends.</p>
+<p>You can stop at any time<!--if accounts-->, and you can delete your account in the app under Settings, then Delete account<!--/if-->. We may suspend or end your access if you break these terms or if we need to protect the Service or other people. Parts of these terms that by their nature should continue (such as the disclaimers, the limits on liability and the governing law) continue after your access ends.</p>
 
 <h2>Disclaimers</h2>
 <p>The Service is provided “as is” and “as available”. To the fullest extent the law allows, we do not promise that it will be uninterrupted, error-free or suited to your particular purpose.</p>
@@ -46,9 +47,9 @@
 <p>These terms are governed by the laws of the province or territory of Canada where {{PUBLISHER}} is based and the federal laws of Canada that apply there. The courts of that province or territory can hear disputes, except that you may also bring a claim in the courts where you live if your local consumer law gives you that right.</p>
 
 <h2>Changes</h2>
-<p>We may update the Service or these terms. We will change the date at the top, and tell you in the app or by email if a change is important. If you keep using the Service after a change, you accept the updated terms. If you do not accept them, you can delete your account.</p>
+<p>We may update the Service or these terms. We will change the date at the top, and tell you in the app or by email if a change is important. If you keep using the Service after a change, you accept the updated terms. If you do not accept them, you can <!--if accounts-->delete your account<!--/if--><!--if !accounts-->stop using the Service<!--/if-->.</p>
 
-<h2>Additional terms for the Apple App Store</h2>
+<!--if appstore--><h2>Additional terms for the Apple App Store</h2>
 <p>If you got the app from the Apple App Store, these also apply:</p>
 <ul>
   <li><strong>Between you and us only.</strong> These terms are between you and {{PUBLISHER}}, not Apple Inc. ("Apple"). Apple is not a party to these terms. We, not Apple, are responsible for the app and its content.</li>
@@ -62,6 +63,7 @@
   <li><strong>Third-party beneficiary.</strong> Apple and its subsidiaries are third-party beneficiaries of these terms. Once you accept them, Apple can enforce them against you as a third-party beneficiary.</li>
   <li><strong>Questions or complaints:</strong> {{PUBLISHER}}, <a href="mailto:{{SUPPORT_EMAIL}}">{{SUPPORT_EMAIL}}</a>.</li>
 </ul>
+<!--/if-->
 
 <h2>Contact</h2>
 <p>{{PUBLISHER}}, <a href="mailto:{{SUPPORT_EMAIL}}">{{SUPPORT_EMAIL}}</a>. See also our <a href="/privacy">Privacy Policy</a> and <a href="/support">Support</a> page.</p>

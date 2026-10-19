@@ -22,6 +22,10 @@ RATE_LIMIT_HUM_PER_MINUTE = _config["RATE_LIMIT_HUM_PER_MINUTE"]
 RATE_LIMIT_DEFAULT_PER_MINUTE = _config["RATE_LIMIT_DEFAULT_PER_MINUTE"]
 # Shown on the public /privacy, /terms and /support pages (server/legal.py).
 LEGAL_PUBLISHER = _config["LEGAL_PUBLISHER"]
+# Which optional parts of the policy and terms apply to this release (server/legal.py).
+LEGAL_ACCOUNTS = _config["LEGAL_ACCOUNTS"]
+LEGAL_TALK_MODE = _config["LEGAL_TALK_MODE"]
+LEGAL_APP_STORE = _config["LEGAL_APP_STORE"]
 SUPPORT_EMAIL = _config["SUPPORT_EMAIL"]
 HUM_TTL_HOURS = _config["HUM_TTL_HOURS"]  # how long hum files are kept; stated in the privacy policy
 

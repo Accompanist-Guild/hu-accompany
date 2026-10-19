@@ -264,9 +264,12 @@ stage_deploy() {
   # Printed on the public privacy policy, so it must be an address you really read.
   ask SUPPORT_EMAIL "Support email address to show on the privacy policy (create it first)"
   save SUPPORT_EMAIL "$SUPPORT_EMAIL"
+  # Named on the public privacy policy and terms as the party responsible, so the server refuses to start without one.
+  ask LEGAL_PUBLISHER "Name to show as the publisher on the privacy policy and terms (your legal or business name, no commas)"
+  save LEGAL_PUBLISHER "$LEGAL_PUBLISHER"
   PROJECT="$PROJECT" REGION="$REGION" SERVICE="$SERVICE" \
   POSTGRES_HOST="$POSTGRES_HOST" POSTGRES_DB="$POSTGRES_DB" POSTGRES_USER="$POSTGRES_USER" \
-  MUSICXML_BASE_URL="$MUSICXML_BASE_URL" SUPPORT_EMAIL="$SUPPORT_EMAIL" BILLING_ACCOUNT="${BILLING_ACCOUNT:-}" BUDGET_USD="$BUDGET_USD" \
+  MUSICXML_BASE_URL="$MUSICXML_BASE_URL" SUPPORT_EMAIL="$SUPPORT_EMAIL" LEGAL_PUBLISHER="$LEGAL_PUBLISHER" BILLING_ACCOUNT="${BILLING_ACCOUNT:-}" BUDGET_USD="$BUDGET_USD" \
     backend/deploy/cloud-run.sh
 
   say "verify"

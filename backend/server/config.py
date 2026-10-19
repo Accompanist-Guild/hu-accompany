@@ -40,6 +40,11 @@ def _number(env: Mapping[str, str], name: str, default: int) -> int:
         raise ImproperlyConfigured(f"{name} must be a whole number, got {raw!r}") from None
 
 
+def _flag(env: Mapping[str, str], name: str) -> bool:
+    """True for "true", "1", "yes" or "on" (any case); anything else, including unset, is False."""
+    return env.get(name, "").strip().lower() in ("true", "1", "yes", "on")
+
+
 def _positive_number(env: Mapping[str, str], name: str, default: float) -> float:
     raw = env.get(name)
     if raw is None or raw.strip() == "":
@@ -59,6 +64,12 @@ def build_settings(env: Mapping[str, str]) -> dict:
     # Shown on the public privacy policy, terms and support pages (server/legal.py).
     legal = {
         "LEGAL_PUBLISHER": env.get("LEGAL_PUBLISHER", "").strip() or "AG",
+        # Which parts of the pages apply to this release (see server/legal.py). All off is the Mac download as it
+        # ships: no accounts, no Talk mode, not from the App Store. Turn one on when the app gains that feature,
+        # so the policy changes in step with it.
+        "LEGAL_ACCOUNTS": _flag(env, "LEGAL_ACCOUNTS"),
+        "LEGAL_TALK_MODE": _flag(env, "LEGAL_TALK_MODE"),
+        "LEGAL_APP_STORE": _flag(env, "LEGAL_APP_STORE"),
         "HUM_TTL_HOURS": _positive_number(env, "HUM_TTL_HOURS", 3.0),  # also how long server/janitor.py keeps hums
     }
 
@@ -88,6 +99,13 @@ def build_settings(env: Mapping[str, str]) -> dict:
 
     if not app_key:
         raise ImproperlyConfigured("Production needs APP_API_KEY: without it every route is open to anyone.")
+
+    # The default ("AG") is for development only: the policy names this as the party responsible for the data.
+    if not env.get("LEGAL_PUBLISHER", "").strip():
+        raise ImproperlyConfigured(
+            "Production needs LEGAL_PUBLISHER set to the name of whoever publishes the app: "
+            "it is printed on the public privacy policy and terms."
+        )
 
     support = env.get("SUPPORT_EMAIL", "").strip()
     if "@" not in support or support.lower().endswith(PLACEHOLDER_DOMAINS):

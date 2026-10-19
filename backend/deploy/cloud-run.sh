@@ -4,7 +4,10 @@
 # secrets, database, object storage).
 #
 #   PROJECT=my-project POSTGRES_HOST=ep-xyz.neon.tech POSTGRES_DB=music_catalog POSTGRES_USER=app \
-#   MUSICXML_BASE_URL=https://pub-xxxx.r2.dev SUPPORT_EMAIL=support@yourdomain.com  backend/deploy/cloud-run.sh
+#   MUSICXML_BASE_URL=https://pub-xxxx.r2.dev SUPPORT_EMAIL=support@yourdomain.com LEGAL_PUBLISHER="Your Name"  backend/deploy/cloud-run.sh
+#
+# Optional: LEGAL_ACCOUNTS=true, LEGAL_TALK_MODE=true, LEGAL_APP_STORE=true switch the matching parts of the public
+# privacy policy and terms on (all off is the Mac download as it ships: no accounts, no Talk mode, no App Store).
 #
 # DRY_RUN=1 prints every command instead of running it.
 set -euo pipefail
@@ -15,6 +18,9 @@ set -euo pipefail
 : "${POSTGRES_USER:?set POSTGRES_USER}"
 : "${MUSICXML_BASE_URL:?set MUSICXML_BASE_URL (the public address of the bucket holding musicxml/)}"
 : "${SUPPORT_EMAIL:?set SUPPORT_EMAIL (the address printed on the public privacy policy; the server will not start without it)}"
+: "${LEGAL_PUBLISHER:?set LEGAL_PUBLISHER (who the privacy policy and terms name as the publisher; the server will not start without it)}"
+# --set-env-vars splits on commas, so a comma in the name would be read as the start of another variable.
+case "$LEGAL_PUBLISHER" in *,*) echo "LEGAL_PUBLISHER must not contain a comma (it is '$LEGAL_PUBLISHER')" >&2; exit 1 ;; esac
 REGION="${REGION:-us-central1}"
 SERVICE="${SERVICE:-hu-accompany}"
 REPO="${REPO:-hu-accompany}"
@@ -46,7 +52,7 @@ run gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --project "
   --allow-unauthenticated \
   --min-instances 0 --max-instances 1 \
   --concurrency 8 --cpu 1 --memory 2Gi --cpu-throttling --timeout 300 --cpu-boost \
-  --set-env-vars "ALLOWED_HOSTS=${ALLOWED_HOSTS:-placeholder.invalid},POSTGRES_HOST=${POSTGRES_HOST},POSTGRES_DB=${POSTGRES_DB},POSTGRES_USER=${POSTGRES_USER},PGSSLMODE=require,MUSICXML_BASE_URL=${MUSICXML_BASE_URL},SUPPORT_EMAIL=${SUPPORT_EMAIL}" \
+  --set-env-vars "ALLOWED_HOSTS=${ALLOWED_HOSTS:-placeholder.invalid},POSTGRES_HOST=${POSTGRES_HOST},POSTGRES_DB=${POSTGRES_DB},POSTGRES_USER=${POSTGRES_USER},PGSSLMODE=require,MUSICXML_BASE_URL=${MUSICXML_BASE_URL},SUPPORT_EMAIL=${SUPPORT_EMAIL},LEGAL_PUBLISHER=${LEGAL_PUBLISHER},LEGAL_ACCOUNTS=${LEGAL_ACCOUNTS:-false},LEGAL_TALK_MODE=${LEGAL_TALK_MODE:-false},LEGAL_APP_STORE=${LEGAL_APP_STORE:-false}" \
   --set-secrets "DJANGO_SECRET_KEY=django-secret-key:latest,APP_API_KEY=app-api-key:latest,POSTGRES_PASSWORD=postgres-password:latest,GEMINI_API_KEY=gemini-api-key:latest,ELEVENLABS_API_KEY=elevenlabs-api-key:latest"
 
 echo "== 4. Allow the service's own address =="

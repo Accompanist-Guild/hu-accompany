@@ -27,6 +27,7 @@ PROD = {
     "ALLOWED_HOSTS": "api.example.com",
     "APP_API_KEY": "app-key",
     "SUPPORT_EMAIL": "help@example.org",
+    "LEGAL_PUBLISHER": "Example Publisher",
 }
 
 
@@ -107,6 +108,21 @@ class ConfigTests(SimpleTestCase):
     def test_the_legal_pages_settings_can_be_changed(self):
         cfg = build_settings({"LEGAL_PUBLISHER": "Someone Else", "SUPPORT_EMAIL": "me@example.org", "HUM_TTL_HOURS": "1.5"})
         self.assertEqual((cfg["LEGAL_PUBLISHER"], cfg["SUPPORT_EMAIL"], cfg["HUM_TTL_HOURS"]), ("Someone Else", "me@example.org", 1.5))
+
+    def test_production_will_not_start_without_a_named_publisher(self):
+        # The development default would otherwise be printed on the public policy as who is responsible.
+        without = {k: v for k, v in PROD.items() if k != "LEGAL_PUBLISHER"}
+        for env in (without, {**without, "LEGAL_PUBLISHER": "  "}):
+            with self.assertRaisesMessage(ImproperlyConfigured, "LEGAL_PUBLISHER"):
+                build_settings(env)
+        self.assertEqual(build_settings(PROD)["LEGAL_PUBLISHER"], "Example Publisher")
+
+    def test_the_optional_parts_of_the_legal_pages_are_off_unless_asked_for(self):
+        off = build_settings(PROD)
+        self.assertEqual((off["LEGAL_ACCOUNTS"], off["LEGAL_TALK_MODE"], off["LEGAL_APP_STORE"]), (False, False, False))
+        on = build_settings(PROD | {"LEGAL_ACCOUNTS": "true", "LEGAL_TALK_MODE": "True", "LEGAL_APP_STORE": "1"})
+        self.assertEqual((on["LEGAL_ACCOUNTS"], on["LEGAL_TALK_MODE"], on["LEGAL_APP_STORE"]), (True, True, True))
+        self.assertFalse(build_settings(PROD | {"LEGAL_TALK_MODE": "nope"})["LEGAL_TALK_MODE"])
 
     def test_production_will_not_start_with_a_missing_or_placeholder_support_address(self):
         # The address is published in the privacy policy that App Review reads. A placeholder must never get there.
@@ -511,10 +527,15 @@ def outline(html):
     return parser
 
 
-@override_settings(ROOT_URLCONF="server.tests", MIDDLEWARE=[], ALLOWED_HOSTS=["testserver"], **LEGAL_SETTINGS)
+EVERYTHING_ON = dict(LEGAL_ACCOUNTS=True, LEGAL_TALK_MODE=True, LEGAL_APP_STORE=True)
+EVERYTHING_OFF = dict(LEGAL_ACCOUNTS=False, LEGAL_TALK_MODE=False, LEGAL_APP_STORE=False)
+
+
+@override_settings(ROOT_URLCONF="server.tests", MIDDLEWARE=[], ALLOWED_HOSTS=["testserver"], **LEGAL_SETTINGS, **EVERYTHING_ON)
 class LegalPagesTests(SimpleTestCase):
     """The pages are plain HTML in backend/legal/, filled in from settings, so what they say about
-    the publisher, the contact address and how long hums are kept can't drift from the server's setup."""
+    the publisher, the contact address and how long hums are kept can't drift from the server's setup.
+    This class checks the fullest version (accounts, Talk mode and the App Store all in the release)."""
 
     PAGES = ("privacy", "terms", "support")
 
@@ -688,3 +709,91 @@ class LegalPagesTests(SimpleTestCase):
         html = self.text("support")
         for phrase in ("Delete account", "Export my data", "microphone", "Settings"):
             self.assertIn(phrase.lower(), html.lower(), phrase)
+
+
+@override_settings(ROOT_URLCONF="server.tests", MIDDLEWARE=[], ALLOWED_HOSTS=["testserver"], **LEGAL_SETTINGS, **EVERYTHING_OFF)
+class LegalPagesForTheMacDownloadTests(SimpleTestCase):
+    """The release as it ships: no accounts, no Talk mode, not from the App Store. A policy that describes data
+    the app doesn't collect, or a service it doesn't call, is wrong in the other direction, so each page must
+    leave those parts out."""
+
+    PAGES = ("privacy", "terms", "support")
+
+    def text(self, name):
+        response = self.client.get(f"/{name}")
+        self.assertEqual(response.status_code, 200, name)
+        return response.content.decode()
+
+    def test_no_page_mentions_the_outside_ai_services(self):
+        for name in self.PAGES:
+            html = self.text(name).lower()
+            for word in ("elevenlabs", "gemini", "talk mode", "artificial intelligence"):
+                self.assertNotIn(word, html, f"{name} still talks about {word}")
+
+    def test_no_page_describes_accounts_the_app_does_not_have(self):
+        for name in self.PAGES:
+            html = self.text(name).lower()
+            for phrase in ("delete account", "export my data", "your account", "sign-in token", "password", "keychain"):
+                self.assertNotIn(phrase, html, f"{name} still talks about {phrase}")
+        self.assertIn("no accounts", self.text("privacy").lower())
+
+    def test_the_apple_app_store_terms_are_left_out(self):
+        html = self.text("terms")
+        self.assertNotIn("Apple Inc.", html)
+        self.assertNotIn("third-party beneficiaries", html.lower())
+
+    def test_what_is_still_true_is_still_said(self):
+        privacy = self.text("privacy").lower()
+        for phrase in ("microphone", "humming", "3 hours", "do not sell", "under 13", "https", "google cloud",
+                       "neon", "cloudflare", "person responsible for privacy", "mailto:help@example.org"):
+            self.assertIn(phrase, privacy, phrase)
+        terms = self.text("terms").lower()
+        for phrase in ("pdmx", "cc by 4.0", "we screen", "as is", "canada", "stop at any time"):
+            self.assertIn(phrase, terms, phrase)
+
+    def test_nothing_says_phone_or_ios_only(self):
+        for name in self.PAGES:
+            html = self.text(name)
+            self.assertNotIn("iOS Settings", html, name)
+            self.assertNotIn("iPhone and iOS version", html, name)
+
+    def test_the_support_page_does_not_point_to_buttons_that_are_hidden(self):
+        html = self.text("support").lower()
+        self.assertNotIn("settings and tap", html)
+
+
+@override_settings(ROOT_URLCONF="server.tests", MIDDLEWARE=[], ALLOWED_HOSTS=["testserver"], **LEGAL_SETTINGS)
+class LegalConditionTests(SimpleTestCase):
+    """The <!--if ...--> blocks must leave every combination of settings as a well-formed page."""
+
+    def test_every_combination_renders_cleanly(self):
+        import itertools
+        for accounts, talk, store in itertools.product((False, True), repeat=3):
+            flags = dict(LEGAL_ACCOUNTS=accounts, LEGAL_TALK_MODE=talk, LEGAL_APP_STORE=store)
+            with override_settings(**flags):
+                for name in ("privacy", "terms", "support"):
+                    html = legal.render(name)
+                    where = f"{name} {flags}"
+                    self.assertNotIn("<!--", html, where)
+                    self.assertNotIn("{{", html, where)
+                    page = outline(html)
+                    self.assertEqual(page.problems, [], where)
+                    self.assertEqual(page.h1s, 1, where)
+
+    def test_the_blocks_in_the_files_are_balanced_and_not_nested(self):
+        for name in ("privacy", "terms", "support"):
+            text = (Path(__file__).resolve().parents[1] / "legal" / f"{name}.html").read_text()
+            depth = 0
+            for token in re.findall(r"<!--/?if[^>]*-->", text):
+                depth += -1 if token == "<!--/if-->" else 1
+                self.assertIn(depth, (0, 1), f"{name}: blocks must not nest")
+            self.assertEqual(depth, 0, f"{name}: a block is never closed")
+
+    def test_an_unknown_condition_is_an_error_not_silently_kept(self):
+        with self.assertRaises(KeyError):
+            legal._apply_conditions("<!--if bananas-->x<!--/if-->")
+
+    def test_a_setting_value_cannot_smuggle_in_a_block(self):
+        with override_settings(LEGAL_PUBLISHER="<!--if talk-->sneaky<!--/if-->", LEGAL_TALK_MODE=False):
+            self.assertNotIn("<!--", legal.render("support"))
+            self.assertIn("&lt;!--if talk--&gt;", legal.render("terms"))
