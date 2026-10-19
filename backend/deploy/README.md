@@ -9,7 +9,7 @@ The Django backend in `backend/` runs on **Google Cloud Run** as a container. Th
 
 | Concern | Choice |
 |---|---|
-| Compute | Cloud Run, **one always-on instance**, one gunicorn worker with 8 threads |
+| Compute | Cloud Run, **at most one instance, scaling to zero when idle** (1 CPU, 2 GiB), one gunicorn worker with 8 threads |
 | Database | Neon Postgres (free tier to start) |
 | Score files | Cloudflare R2 bucket, read over its public address (`MUSICXML_BASE_URL`) |
 | TLS | Provided by Cloud Run |
@@ -23,17 +23,18 @@ iOS app --HTTPS + X-App-Key--> Cloud Run (gunicorn + Django) --> Neon Postgres (
                                        +--> Gemini / ElevenLabs APIs (talk mode)
 ```
 
-## Decision: why a single always-on instance
+## Decision: why at most one instance, and none when idle
 
 The hum feature keeps state **inside the process and on the container's disk** between requests: an upload's file, intermediate runs, rendered stems, and spoken talk replies held in memory. A follow-up request that landed on a different copy of the container would get "That hum isn't on the server any more".
 
 The cleaner fix is to move that state to shared storage, but that means changing `hum/`, which is deliberately left alone. So for the first release:
 
-- `--min-instances 1 --max-instances 1`: there is only ever one copy, and it never scales to zero.
+- `--max-instances 1`: there is never more than one copy.
+- `--min-instances 0`: when nobody has used the app for a while (about 15 minutes) Google stops the copy and you pay nothing. The next request starts it again, which takes several seconds (the app retries a request that times out).
 - **One gunicorn worker** (`deploy/gunicorn.conf.py`): talk replies live in that one process's memory. Concurrency comes from threads.
 - **Disk is memory on Cloud Run**, so `server/janitor.py` deletes hum files older than `HUM_TTL_HOURS` (default 3) every `HUM_SWEEP_MINUTES` (default 10); otherwise uploads would pile up until the instance runs out of memory.
 
-What this costs you: a restart or redeploy loses in-flight hums (the app already says "Hum again"), the service can't scale out, and an always-on instance costs money while idle. Checked against [Google's price list](https://cloud.google.com/run/pricing) (Tier 1 regions such as us-central1): an idle minimum instance is billed at $0.0000025 per vCPU-second and per GiB-second, so 2 vCPU + 4 GiB idle for a 30-day month is about 6 x 0.0000025 x 2,592,000 s = **$39**, plus the (higher) active rate while it serves requests and $0.40 per million requests; 1 vCPU + 2 GiB is about **$19**. Cloudflare R2's free tier ([pricing](https://developers.cloudflare.com/r2/pricing/)) covers 10 GB of storage and free egress, which is plenty for the screened score library. **Neon's free plan suspends the database after 5 minutes idle and keeps 6 hours of restore history** ([plans](https://neon.com/docs/introduction/plans)), so the first request after a quiet spell is slow; use a paid plan or disable scale-to-zero before App Review.
+What this costs you: a stop, restart or redeploy loses in-flight hums (the app already says "Hum again"), the service can't scale out, and the first request after a quiet spell is slow (a cold Cloud Run copy, plus Neon waking up). Cost, with the service on request-based billing (`--cpu-throttling`) so only the seconds spent handling requests are charged: the monthly free allowance is 180,000 vCPU-seconds, which is about 50 busy hours at 1 vCPU. Past that, 1 vCPU + 2 GiB is about **$0.10 per busy hour** (third-party figures of $0.000024 per vCPU-second and $0.0000025 per GiB-second, plus $0.40 per million requests; check the [Cloud Run price list](https://cloud.google.com/run/pricing) before relying on them). A quiet month is **$0**. The worst case, one instance busy around the clock, is about **$75**; the rate limits and `--max-instances 1` bound it, but a Google budget alert only warns, it does not stop spending. For comparison, keeping one copy always on (`--min-instances 1`) would cost about $19 a month for 1 vCPU + 2 GiB idle, at $0.0000025 per vCPU-second and per GiB-second. Whether 2 GiB is enough for the hum engine has not been measured: after the first deploy, check the service's memory use in Cloud Run's Metrics tab, and raise `--memory` (or `--cpu`) in `cloud-run.sh` if it runs close to the limit or hums are slow. Cloudflare R2's free tier ([pricing](https://developers.cloudflare.com/r2/pricing/)) covers 10 GB of storage and free egress, which is plenty for the screened score library. **Neon's free plan suspends the database after 5 minutes idle and keeps 6 hours of restore history** ([plans](https://neon.com/docs/introduction/plans)), so the first request after a quiet spell is slow; use a paid plan or disable scale-to-zero before App Review.
 
 When this needs to change: if one instance can't handle the load, the hum state has to move out of the container (uploads and runs to R2, talk replies to shared storage) before running more than one.
 

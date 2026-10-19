@@ -36,14 +36,16 @@ fi
 echo "== 2. Build (Cloud Build builds linux/amd64, which is what Cloud Run runs) =="
 run gcloud builds submit "$BACKEND_DIR" --tag "$IMAGE" --project "$PROJECT"
 
-# One instance, always on: the hum feature keeps state in the process (see deploy/README.md).
+# At most one instance, and none while nobody is using the app: the hum feature keeps state in the process, so it must
+# never be two copies (see deploy/README.md), but an idle copy is not worth paying for. 1 CPU / 2 GiB is billed only
+# while a request is being handled (--cpu-throttling), so a quiet month costs nothing.
 # The first deploy doesn't know the service's address yet, so ALLOWED_HOSTS gets a placeholder that
 # step 4 replaces. /healthz answers regardless of Host, so the service still starts.
 echo "== 3. Deploy =="
 run gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --project "$PROJECT" \
   --allow-unauthenticated \
-  --min-instances 1 --max-instances 1 \
-  --concurrency 8 --cpu 2 --memory 4Gi --timeout 300 --cpu-boost \
+  --min-instances 0 --max-instances 1 \
+  --concurrency 8 --cpu 1 --memory 2Gi --cpu-throttling --timeout 300 --cpu-boost \
   --set-env-vars "ALLOWED_HOSTS=${ALLOWED_HOSTS:-placeholder.invalid},POSTGRES_HOST=${POSTGRES_HOST},POSTGRES_DB=${POSTGRES_DB},POSTGRES_USER=${POSTGRES_USER},PGSSLMODE=require,MUSICXML_BASE_URL=${MUSICXML_BASE_URL},SUPPORT_EMAIL=${SUPPORT_EMAIL}" \
   --set-secrets "DJANGO_SECRET_KEY=django-secret-key:latest,APP_API_KEY=app-api-key:latest,POSTGRES_PASSWORD=postgres-password:latest,GEMINI_API_KEY=gemini-api-key:latest,ELEVENLABS_API_KEY=elevenlabs-api-key:latest"
 
