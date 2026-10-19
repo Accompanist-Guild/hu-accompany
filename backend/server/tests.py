@@ -797,3 +797,73 @@ class LegalConditionTests(SimpleTestCase):
         with override_settings(LEGAL_PUBLISHER="<!--if talk-->sneaky<!--/if-->", LEGAL_TALK_MODE=False):
             self.assertNotIn("<!--", legal.render("support"))
             self.assertIn("&lt;!--if talk--&gt;", legal.render("terms"))
+
+
+@override_settings(ROOT_URLCONF="server.tests", MIDDLEWARE=[], ALLOWED_HOSTS=["testserver"], **LEGAL_SETTINGS,
+                   LEGAL_ACCOUNTS=False, LEGAL_TALK_MODE=True, LEGAL_APP_STORE=False)
+class LegalWordingReviewTests(SimpleTestCase):
+    """Wording fixed after the legal review, for the version that ships (no accounts, Talk mode on, no App Store).
+    Each test pins a statement to what the code or the licence really is."""
+
+    def text(self, name):
+        response = self.client.get(f"/{name}")
+        self.assertEqual(response.status_code, 200, name)
+        return response.content.decode()
+
+    def test_hum_retention_is_counted_from_when_the_file_was_made_or_last_changed(self):
+        # server/janitor.py deletes by modification time, so "after last used" overstated how long a hum lives.
+        for name in ("privacy", "support"):
+            html = self.text(name)
+            self.assertNotIn("last used", html, name)
+            self.assertIn("made or last changed", html, name)
+
+    def test_the_policy_does_not_claim_we_cannot_delete_what_elevenlabs_keeps(self):
+        # ElevenLabs offers a delete call that the server does not use, so "cannot" was untrue; "do not currently" is.
+        html = self.text("privacy")
+        self.assertNotIn("cannot delete them", html)
+        self.assertIn("We do not currently ask it to delete them", html)
+        self.assertIn("text of our spoken replies", html)
+
+    def test_practice_feedback_is_described_as_files_on_the_temporary_disk(self):
+        html = self.text("privacy")
+        self.assertIn("temporary disk", html)
+        self.assertIn("<strong>Practice feedback:</strong> until the server next restarts or stops", html)
+
+    def test_request_logs_have_a_stated_period(self):
+        self.assertIn("about 30 days", self.text("privacy"))
+
+    def test_the_policy_gives_a_legal_basis_and_how_to_withdraw_talk_mode_consent(self):
+        html = self.text("privacy")
+        self.assertIn("legitimate interest", html)
+        self.assertIn("your consent, for sending your Talk mode requests", html)
+        self.assertIn("Stop sharing", html)
+
+    def test_changes_are_announced_where_people_can_actually_see_them(self):
+        # No accounts means no email addresses and no in-app notice, so the promise would have been empty.
+        for name in ("privacy", "terms"):
+            html = self.text(name)
+            self.assertNotIn("by email", html, name)
+            self.assertIn("our download page", html, name)
+
+    def test_the_terms_agree_with_the_mit_licence_on_the_source_code(self):
+        html = self.text("terms")
+        self.assertIn("MIT License", html)
+        self.assertNotIn("revocable", html)
+        self.assertNotIn("reverse-engineer", html)
+        self.assertNotIn("non-transferable", html)
+
+    def test_the_scores_are_not_claimed_to_belong_to_unnamed_owners(self):
+        html = self.text("terms")
+        self.assertNotIn("belong to their respective owners", html)
+        self.assertIn("modern edition or arrangement", html)
+
+    def test_the_terms_say_where_to_read_them(self):
+        self.assertIn("the app links to them in Settings", self.text("terms"))
+
+    def test_the_legal_basis_sentence_reads_correctly_with_and_without_talk_mode(self):
+        for talk in (True, False):
+            with override_settings(LEGAL_TALK_MODE=talk):
+                html = self.text("privacy")
+                self.assertNotIn("bases: and", html)
+                self.assertNotIn("bases:  ", html)
+                self.assertIn("our legitimate interest in running and securing the service", html)

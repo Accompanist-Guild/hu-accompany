@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:hu_accomponist/config/app_constants.dart';
 import 'package:hu_accomponist/features/search/Library_Browse.dart';
 import 'package:hu_accomponist/features/search/Library_Result_Card.dart';
 import 'package:hu_accomponist/features/search/Library_Search_Field.dart';
 import 'package:hu_accomponist/features/search/Library_Skeleton.dart';
 import 'package:hu_accomponist/features/search/library_controller.dart';
+import 'package:hu_accomponist/integrations/links/link_opener.dart';
 import 'package:hu_accomponist/integrations/scores/score_models.dart';
 import 'package:hu_accomponist/shared/theme/Design_Tokens.dart';
 import 'package:hu_accomponist/features/shelf/Shelf_Page.dart';
@@ -24,7 +26,10 @@ const Color _cream = libCream;
 // ═══════════════════════════════════════════════════════════════════════════════
 
 class Music_Library_Page extends StatefulWidget {
-  const Music_Library_Page({super.key});
+  const Music_Library_Page({super.key, this.links = const SystemLinkOpener()});
+
+  /// Opens the credit line's link to the Terms of Service.
+  final LinkOpener links;
 
   @override
   State<Music_Library_Page> createState() => _Music_Library_PageState();
@@ -375,15 +380,29 @@ class _Music_Library_PageState extends State<Music_Library_Page> {
         if (i == picks.length) {
           return Padding(
             padding: const EdgeInsets.only(top: 14),
-            child: Text(
-              'Sheet music from PDMX, a public-domain MusicXML collection',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: _bookFont,
-                fontFamilyFallback: _bookFontFallback,
-                fontStyle: FontStyle.italic,
-                fontSize: 11,
-                color: _ink.withValues(alpha: 0.4),
+            // CC BY 4.0 asks for credit, a licence notice and a link. The Terms page has all three, so the
+            // credit links there instead of sitting as small faint text.
+            child: Semantics(
+              link: true,
+              child: InkWell(
+                key: const ValueKey('pdmx-credit'),
+                onTap: () => widget.links.openWeb(AppConstants.termsOfServiceUrl),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text(
+                    'Sheet music from PDMX, a public-domain MusicXML collection (CC BY 4.0). '
+                    'Credits and licence are in the Terms of Service.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontFamily: _bookFont,
+                      fontFamilyFallback: _bookFontFallback,
+                      fontStyle: FontStyle.italic,
+                      fontSize: 12,
+                      decoration: TextDecoration.underline,
+                      color: _ink.withValues(alpha: 0.65),
+                    ),
+                  ),
+                ),
               ),
             ),
           );
