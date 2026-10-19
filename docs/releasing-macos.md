@@ -46,3 +46,15 @@ Set these once at **Settings > Secrets and variables > Actions**. The workflow p
 ## Checked, and not checked
 
 Checked on a Mac, from a fresh `git clone` plus these changes: `flutter pub get`, `analyze`, all 232 tests, `flutter build macos --release`, the packaging script, and the workflow's own check step (including a failing case). **Not checked: the workflow on GitHub itself**, because it hasn't been pushed. Run it once with **Run workflow** before relying on it.
+
+## Checking a server with the app's own code
+
+`frontend/test/live_server_smoke_test.dart` runs the app's score search, score download and quiz code against a real server, with the same `SERVER_URL` and `APP_KEY` a release gets. It also checks that the server refuses a request with no key. It skips itself unless a server address is given:
+
+```bash
+cd frontend
+flutter test test/live_server_smoke_test.dart \
+  --dart-define=SERVER_URL=https://<your service>.run.app --dart-define=APP_KEY=<the key>
+```
+
+Run it once after `backend/deploy/setup.sh`, before tagging a release. It passed against a local copy of the backend in production mode (gunicorn, `DJANGO_ENV=production`, the app key on) and failed, as it should, with a wrong key or an `http://` address that is not on this machine.
