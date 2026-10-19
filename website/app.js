@@ -30,6 +30,7 @@ function isGithubUrl(u) {
 async function showDownload() {
   const site = window.SITE || {};
   const button = document.getElementById("download");
+  if (!button) return; // only the home page has a download button
   const status = document.getElementById("download-status");
   const all = document.getElementById("all-releases");
   all.href = "https://github.com/" + site.repo + "/releases";
@@ -66,6 +67,7 @@ function showLegalLinks() {
   if (!/^https:\/\/[^/\s]+/.test(base)) return;
   for (const page of ["privacy", "terms", "support"]) {
     const a = document.getElementById("link-" + page);
+    if (!a) continue;
     a.href = base + "/" + page;
     a.hidden = false;
   }

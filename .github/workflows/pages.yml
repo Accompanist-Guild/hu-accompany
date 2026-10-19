@@ -6,7 +6,7 @@ name: Publish website
 on:
   push:
     branches: [main]
-    paths: ['website/**', '.github/workflows/pages.yml']
+    paths: ['website/**', 'scripts/check_website.py', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:
@@ -44,6 +44,10 @@ jobs:
           cat > website/config.js <<JS
           window.SITE = { repo: "$REPO", serverUrl: "$SERVER_URL" };
           JS
+
+      # Stops a broken link or unbalanced page from being published.
+      - name: Check the pages
+        run: python3 scripts/check_website.py website
 
       - uses: actions/configure-pages@v6
 

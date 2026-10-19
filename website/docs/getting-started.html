@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getting started | Hu Accomponist guides</title>
+<meta name="description" content="Install the Mac app and find your way around.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="../">Hu <span>Accomponist</span></a>
+    <nav aria-label="Site"><a href="./">Guides</a><a href="faq.html">FAQ</a><a href="../#download">Download</a></nav>
+  </div>
+</header>
+<div class="wrap">
+  <p class="crumbs"><a href="../">Home</a> &rsaquo; <a href="./">Guides</a> &rsaquo; Getting started</p>
+  <article>
+    <h1>Getting started</h1>
+    <p class="intro">Install the Mac app and find your way around.</p>
+
+<h2>What you need</h2>
+<ul>
+  <li>A Mac running <strong>macOS 12 (Monterey) or later</strong>. Apple silicon and Intel Macs both work.</li>
+  <li>An internet connection. The songs, practice feedback, library and quiz all come from the Hu Accomponist server.</li>
+  <li>A microphone. The one built into your Mac is fine. The app uses the input your Mac is set to use.</li>
+</ul>
+
+<h2>Install</h2>
+<ol>
+  <li>On the <a href="../">home page</a>, choose <strong>Download for Mac</strong>. You get a <code>.dmg</code> file.</li>
+  <li>Open the <code>.dmg</code> and drag the app onto <strong>Applications</strong>.</li>
+  <li>Optional: check the download was not damaged. Save the checksum file next to the <code>.dmg</code> and, in Terminal, run <code>shasum -a 256 -c &lt;name&gt;.dmg.sha256</code>. It should say <strong>OK</strong>.</li>
+</ol>
+
+<h2>Open it the first time</h2>
+<p>macOS will refuse to open the app the first time, because it is not signed with an Apple Developer ID. That is expected for this app. To allow it:</p>
+<ol>
+  <li>Try to open the app once, then close the warning.</li>
+  <li>Open <strong>System Settings &rsaquo; Privacy &amp; Security</strong> (on macOS 12, <strong>System Preferences &rsaquo; Security &amp; Privacy</strong>) and scroll down to the message about the app.</li>
+  <li>Click <strong>Open Anyway</strong> and confirm.</li>
+</ol>
+<p>Or, in Terminal, run <code>xattr -dr com.apple.quarantine /Applications/hu_accomponist.app</code> and open the app again. You only need to do this once.</p>
+<p class="callout"><strong>Only install apps you trust.</strong> This one is open source, so you can read its code and the build that made your download on <a href="https://github.com/RamusHu0410/hu-accompany">GitHub</a>.</p>
+
+<h2>Allow the microphone</h2>
+<p>Hum and Practice need the microphone. Choose <strong>Allow</strong> when macOS asks. If you chose Don't Allow by mistake, see <a href="troubleshooting.html#microphone">the microphone fix</a>.</p>
+
+<h2>Take the tutorial</h2>
+<p>The first time you open the app, a short tutorial shows you how to move around. You can skip it, and you can replay it any time in <strong>Settings &rsaquo; Replay the tutorial</strong>.</p>
+
+<h2>Finding your way around</h2>
+<p>The app looks like a turntable. A row of records along the bottom takes you between pages, and a drawer called <strong>All pages</strong> lists them too.</p>
+<table class="pages">
+  <tr><th>Home</th><td>Pick up where you left off.</td></tr>
+  <tr><th>Practice</th><td>Play along with a score or an exercise. <a href="practice.html">Guide</a></td></tr>
+  <tr><th>Search</th><td>Find sheet music in the library. <a href="library.html">Guide</a></td></tr>
+  <tr><th>Shelf</th><td>Your saved scores and hummed songs. <a href="library.html#shelf">Guide</a></td></tr>
+  <tr><th>Quiz</th><td>Test your theory and history. <a href="quiz.html">Guide</a></td></tr>
+  <tr><th>Hum</th><td>Hum a tune and get a song. <a href="hum.html">Guide</a></td></tr>
+  <tr><th>Settings</th><td>Tutorial, legal pages, Talk mode permission, support.</td></tr>
+</table>
+
+<h2>Updating and removing</h2>
+<ul>
+  <li><strong>Update:</strong> download the new version from the home page and drag it onto Applications, replacing the old one. Your shelf and settings stay in place.</li>
+  <li><strong>Remove:</strong> drag the app to the Bin. Your shelf and settings are kept in the app's data folder under <code>~/Library/Containers</code> until you delete that too.</li>
+</ul>
+
+    <nav class="pager" aria-label="Guides"><span></span><a class="next" href="hum.html"><small>Next</small>Hum a song</a></nav>
+  </article>
+  <footer>
+    <a id="link-privacy" href="#" hidden>Privacy Policy</a>
+    <a id="link-terms" href="#" hidden>Terms of Service</a>
+    <a id="link-support" href="#" hidden>Support</a>
+    <a href="./">Guides</a>
+    <a href="https://github.com/RamusHu0410/hu-accompany">Source code</a>
+  </footer>
+</div>
+<script src="../config.js"></script>
+<script src="../app.js"></script>
+</body>
+</html>
