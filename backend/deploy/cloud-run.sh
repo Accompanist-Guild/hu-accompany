@@ -62,7 +62,7 @@ run gcloud run services update "$SERVICE" --region "$REGION" --project "$PROJECT
 if [ -n "${BILLING_ACCOUNT:-}" ]; then
   echo "== 5. Budget alert =="
   run gcloud billing budgets create --billing-account "$BILLING_ACCOUNT" \
-    --display-name "${SERVICE} monthly budget" --budget-amount "${BUDGET_USD:-30}USD" \
+    --display-name "${SERVICE} monthly budget" --budget-amount "${BUDGET_USD:-10}USD" \
     --filter-projects "projects/${PROJECT}" \
     --threshold-rule percent=0.5 --threshold-rule percent=0.9 --threshold-rule percent=1.0
 else
