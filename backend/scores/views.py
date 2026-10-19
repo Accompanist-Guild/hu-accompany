@@ -18,6 +18,8 @@ MUSICXML_TYPE = "application/vnd.recordare.musicxml+xml"
 _REMOTE_PATH = re.compile(r"^musicxml/[A-Za-z0-9._-]+\.musicxml$")
 MAX_REMOTE_BYTES = 50 * 1024 * 1024
 REMOTE_TIMEOUT_SECONDS = 10
+# Cloudflare answers 403 to Python's default "Python-urllib/3.x" User-Agent on r2.dev addresses, so say who we are.
+REMOTE_USER_AGENT = "hu-accompany-server/1.0"
 
 
 @require_GET
@@ -77,7 +79,8 @@ def _from_object_storage(base_url: str, key: str, score_id: int):
         return unavailable  # misconfigured: never fetch file:// and the like
     url = f"{base_url.rstrip('/')}/{key}"
     try:
-        with urllib.request.urlopen(url, timeout=REMOTE_TIMEOUT_SECONDS) as remote:
+        request = urllib.request.Request(url, headers={"User-Agent": REMOTE_USER_AGENT})
+        with urllib.request.urlopen(request, timeout=REMOTE_TIMEOUT_SECONDS) as remote:
             data = remote.read(MAX_REMOTE_BYTES + 1)
     except urllib.error.HTTPError as e:
         if e.code == 404:

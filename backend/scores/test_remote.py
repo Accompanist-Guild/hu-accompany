@@ -27,6 +27,11 @@ class FakeR2(BaseHTTPRequestHandler):
 
     def do_GET(self):
         type(self).requested.append(self.path)
+        if self.headers.get("User-Agent", "").startswith("Python-urllib"):
+            # What Cloudflare's r2.dev addresses do to Python's default User-Agent.
+            self.send_response(403)
+            self.end_headers()
+            return
         data = type(self).files.get(self.path.lstrip("/"))
         if data is None:
             self.send_response(404)
