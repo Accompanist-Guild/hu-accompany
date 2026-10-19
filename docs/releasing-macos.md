@@ -58,3 +58,9 @@ flutter test test/live_server_smoke_test.dart \
 ```
 
 Run it once after `backend/deploy/setup.sh`, before tagging a release. It passed against a local copy of the backend in production mode (gunicorn, `DJANGO_ENV=production`, the app key on) and failed, as it should, with a wrong key or an `http://` address that is not on this machine.
+
+## The download website
+
+`website/` is a one-page site: a Download button that always points at the newest release's `.dmg` (it asks GitHub when the page opens), the install steps, and links to the server's Privacy Policy, Terms and Support pages. `.github/workflows/pages.yml` publishes it to GitHub Pages whenever `website/` changes on `main`, filling in the repository and the `SERVER_URL` variable. One-time setup: **Settings > Pages > Build and deployment > Source: GitHub Actions**. The address will be `https://<owner>.github.io/<repo>/`. To try it locally: `cd website && python3 -m http.server`.
+
+The button shows "first release is not published yet" until a release exists, and it skips pre-releases (`/releases/latest` ignores them), so a `v0.1.0-beta.1` tag will not appear on the page.

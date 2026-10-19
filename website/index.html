@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hu Accomponist</title>
+<meta name="description" content="Hum a tune and get an accompaniment, practise with feedback from your own instrument, and study with quizzes. Free download for Mac.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src https://api.github.com; base-uri 'none'; form-action 'none'">
+<style>
+  :root {
+    --bg: #fbfaf7; --surface: #ffffff; --text: #1d1b19; --muted: #625d57; --line: #e4e0d9;
+    --accent: #7a3e1d; --accent-text: #ffffff; --code: #f1eee8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161412; --surface: #1f1c19; --text: #f1ede6; --muted: #aaa39a; --line: #3a3530;
+      --accent: #e0a070; --accent-text: #1a1209; --code: #2a2622;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161412; --surface: #1f1c19; --text: #f1ede6; --muted: #aaa39a; --line: #3a3530;
+    --accent: #e0a070; --accent-text: #1a1209; --code: #2a2622;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 17px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 44rem; margin: 0 auto; padding: 0 16px; }
+  header { padding: 56px 0 24px; }
+  h1 { font-size: clamp(2rem, 6vw, 3rem); line-height: 1.1; margin: 0 0 12px; letter-spacing: -0.02em; }
+  h2 { font-size: 1.25rem; margin: 40px 0 12px; }
+  .lead { font-size: 1.2rem; color: var(--muted); margin: 0 0 28px; }
+  .download {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px;
+  }
+  .button {
+    display: inline-block; background: var(--accent); color: var(--accent-text); text-decoration: none;
+    font-weight: 600; padding: 12px 22px; border-radius: 10px;
+  }
+  .button[aria-disabled="true"] { opacity: 0.55; pointer-events: none; }
+  .button:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .meta { margin: 12px 0 0; color: var(--muted); font-size: 0.95rem; }
+  .meta a { color: var(--muted); }
+  ul.features { padding-left: 1.2rem; }
+  ul.features li { margin: 6px 0; }
+  ol.steps { padding-left: 1.3rem; }
+  ol.steps li { margin: 10px 0; }
+  code { background: var(--code); padding: 2px 6px; border-radius: 5px; font-size: 0.9em; word-break: break-word; }
+  .note {
+    border-left: 4px solid var(--accent); background: var(--surface); padding: 12px 16px; border-radius: 0 10px 10px 0;
+    color: var(--muted);
+  }
+  footer { margin: 56px 0 40px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.95rem; }
+  footer a { color: var(--muted); margin-right: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Hu Accomponist</h1>
+    <p class="lead">Hum a tune and get a song to play along with. Practise on your own instrument and get feedback on what you played.</p>
+
+    <div class="download">
+      <a id="download" class="button" href="https://github.com/RamusHu0410/hu-accompany/releases" aria-disabled="true">Download for Mac</a>
+      <p class="meta" id="download-status">Looking for the latest version&hellip;</p>
+      <p class="meta">
+        Needs macOS 12 or later (Apple silicon or Intel).
+        <a id="checksum" href="#" hidden>Checksum file</a>
+        <a id="all-releases" href="https://github.com/RamusHu0410/hu-accompany/releases">All versions</a>
+      </p>
+      <noscript><p class="meta">Turn on JavaScript to see the latest version, or open the <a href="https://github.com/RamusHu0410/hu-accompany/releases">releases page</a>.</p></noscript>
+    </div>
+  </header>
+
+  <main>
+    <h2>What you can do</h2>
+    <ul class="features">
+      <li><strong>Hum mode:</strong> hum a melody and the app turns it into a song you can play along with.</li>
+      <li><strong>Practice feedback:</strong> play your instrument into the microphone and see what you got right.</li>
+      <li><strong>Library and shelf:</strong> browse public-domain scores and keep your favourites.</li>
+      <li><strong>Quiz:</strong> generate music-history questions from a topic.</li>
+    </ul>
+    <p class="meta">Hum mode, the library and the quiz need an internet connection, because they use the Hu Accomponist server.</p>
+
+    <h2>Install</h2>
+    <ol class="steps">
+      <li>Download the <code>.dmg</code> above, open it, and drag the app onto <strong>Applications</strong>.</li>
+      <li>The first time you open it, macOS will refuse, because the app is not signed with an Apple Developer ID. To allow it, open <strong>System Settings &rsaquo; Privacy &amp; Security</strong>, scroll to the message about the app and click <strong>Open Anyway</strong>. Or in Terminal run <code>xattr -dr com.apple.quarantine /Applications/hu_accomponist.app</code> and open it again.</li>
+      <li>Allow the microphone when asked. Hum mode and practice need it.</li>
+    </ol>
+    <p class="note">Only install apps you trust. This one is open source: its code and the build that made your download are public on GitHub. To check your download was not damaged, save the checksum file next to the <code>.dmg</code> and run <code>shasum -a 256 -c &lt;name&gt;.dmg.sha256</code> in Terminal.</p>
+
+    <h2>Your recordings</h2>
+    <p>When you play an instrument, the app analyses the sound on your computer and sends only the notes it detected. When you hum, the recording goes to our server to be turned into a song, and is deleted automatically after a short while. The Privacy Policy has the details.</p>
+  </main>
+
+  <footer>
+    <a id="link-privacy" href="#" hidden>Privacy Policy</a>
+    <a id="link-terms" href="#" hidden>Terms of Service</a>
+    <a id="link-support" href="#" hidden>Support</a>
+    <a href="https://github.com/RamusHu0410/hu-accompany">Source code</a>
+  </footer>
+</div>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
