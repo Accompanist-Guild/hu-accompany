@@ -213,21 +213,23 @@ stage_secrets() {
       note "updated secret postgres-password (it changed in Neon)"
     else note "kept existing secret postgres-password"; fi
   else ensure_secret postgres-password "$POSTGRES_PASSWORD"; fi
-  # Gemini and ElevenLabs only power Talk mode (changing a song by typing or speaking), which is switched off in the
-  # first release (the app's TALK_MODE build setting; see docs/releasing-macos.md). Both bill per use, so for now they
-  # are stored as "not-configured" and nobody is asked for a key. The service still needs the two secrets to exist,
-  # because cloud-run.sh mounts them. To turn Talk mode on later:
-  #   1. put a real key in each secret:  printf '%s' KEY | gcloud secrets versions add gemini-api-key --data-file=-
-  #      (same for elevenlabs-api-key), or run this script again with GEMINI_API_KEY / ELEVENLABS_API_KEY set
-  #      before the secrets exist (a secret that already exists is never changed);
-  #   2. redeploy so the service picks them up;
-  #   3. set the TALK_MODE variable to true on GitHub and cut a new release.
-  local gem eleven
-  # Only keys passed on purpose in the environment are used; backend/.env is not read, so a development key left
-  # there cannot end up in production by accident.
-  gem="${GEMINI_API_KEY:-not-configured}"; eleven="${ELEVENLABS_API_KEY:-not-configured}"
-  ensure_secret gemini-api-key "$gem"
-  ensure_secret elevenlabs-api-key "$eleven"
+  # Gemini and ElevenLabs power Talk mode (changing a song by typing or speaking). The app asks each person to confirm
+  # they are 18 or older and to agree before anything is sent to them. They bill per use, so a key is optional here:
+  # without one, the server answers Talk mode with a plain "key is missing" message and everything else works.
+  # The key comes from the environment (GEMINI_API_KEY / ELEVENLABS_API_KEY) or is typed now (blank skips it). A
+  # secret that already exists is never changed; add or replace a key later with
+  #   printf '%s' KEY | gcloud secrets versions add gemini-api-key --data-file=-     (or elevenlabs-api-key)
+  # and redeploy so the service picks it up. backend/.env is not read, so a development key left there cannot end up
+  # in production by accident.
+  local gem="${GEMINI_API_KEY:-}" eleven="${ELEVENLABS_API_KEY:-}"
+  if ! gcloud secrets describe gemini-api-key --project "$PROJECT" >/dev/null 2>&1 && [ -z "$gem" ] && [ -t 0 ]; then
+    read -r -s -p "Gemini API key for Talk mode (blank to skip): " gem; echo
+  fi
+  if ! gcloud secrets describe elevenlabs-api-key --project "$PROJECT" >/dev/null 2>&1 && [ -z "$eleven" ] && [ -t 0 ]; then
+    read -r -s -p "ElevenLabs API key for Talk mode (blank to skip): " eleven; echo
+  fi
+  if [ -n "$gem" ]; then ensure_secret gemini-api-key "$gem"; else note "no Gemini key: Talk mode will say its key is missing"; fi
+  if [ -n "$eleven" ]; then ensure_secret elevenlabs-api-key "$eleven"; else note "no ElevenLabs key: voice in Talk mode will say its key is missing"; fi
 }
 
 stage_data() {
