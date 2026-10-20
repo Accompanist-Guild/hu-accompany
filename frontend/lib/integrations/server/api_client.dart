@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'package:hu_accomponist/integrations/server/ServerDiscovery.dart';
+import 'package:hu_accomponist/integrations/server/server_auth.dart';
 
 /// A request the server answered with an error, or couldn't be reached for.
 /// [message] is written for the person using the app.
@@ -28,10 +29,14 @@ class ApiClient {
 
   final Duration timeout;
 
-  Future<http.Response> getJson(String path, {Map<String, String>? query}) {
+  Future<http.Response> getJson(
+    String path, {
+    Map<String, String>? query,
+    Map<String, String>? headers,
+  }) {
     return _send((baseUrl) {
       final uri = Uri.parse('$baseUrl$path').replace(queryParameters: query);
-      return http.get(uri).timeout(timeout);
+      return http.get(uri, headers: ServerAuth.headers(headers)).timeout(timeout);
     });
   }
 
@@ -39,15 +44,27 @@ class ApiClient {
     String path,
     Map<String, dynamic> body, {
     Duration? timeout,
+    Map<String, String>? headers,
   }) {
     return _send((baseUrl) {
       return http
           .post(
             Uri.parse('$baseUrl$path'),
-            headers: {'Content-Type': 'application/json'},
+            headers: ServerAuth.headers({
+              'Content-Type': 'application/json',
+              ...?headers,
+            }),
             body: jsonEncode(body),
           )
           .timeout(timeout ?? this.timeout);
+    });
+  }
+
+  Future<http.Response> delete(String path, {Map<String, String>? headers}) {
+    return _send((baseUrl) {
+      return http
+          .delete(Uri.parse('$baseUrl$path'), headers: ServerAuth.headers(headers))
+          .timeout(timeout);
     });
   }
 
@@ -59,6 +76,7 @@ class ApiClient {
   }) {
     return _send((baseUrl) async {
       final request = http.MultipartRequest('POST', Uri.parse('$baseUrl$path'))
+        ..headers.addAll(ServerAuth.headers())
         ..fields.addAll(fields)
         ..files.add(await http.MultipartFile.fromPath(field, filePath));
       final streamed = await request.send().timeout(timeout);

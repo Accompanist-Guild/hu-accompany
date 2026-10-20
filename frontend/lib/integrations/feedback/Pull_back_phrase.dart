@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:hu_accomponist/integrations/server/ServerDiscovery.dart';
+import 'package:hu_accomponist/integrations/server/server_auth.dart';
 
 /// Models + fetch logic for backend/practice_hub/feedback_generator's two endpoints:
 ///   - POST /api/feedback/phrase  -> PhraseReport (see Phrase_Send2_Server.dart,
@@ -305,7 +306,7 @@ class SessionSummaryService {
       return await http
           .post(
             uri,
-            headers: {'Content-Type': 'application/json'},
+            headers: ServerAuth.headers({'Content-Type': 'application/json'}),
             body: jsonEncode({'session_id': sessionId}),
           )
           .timeout(_fetchTimeout);

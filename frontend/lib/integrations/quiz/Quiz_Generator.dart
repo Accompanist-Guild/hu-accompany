@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import 'package:hu_accomponist/features/quiz/Quiz_Set.dart';
 import 'package:hu_accomponist/integrations/server/ServerDiscovery.dart';
+import 'package:hu_accomponist/integrations/server/server_auth.dart';
 
 /// Thin client for the backend's quiz package (backend/quiz).
 ///
@@ -104,7 +105,7 @@ class QuizGenerator {
       return await http
           .post(
             uri,
-            headers: {'Content-Type': 'application/json'},
+            headers: ServerAuth.headers({'Content-Type': 'application/json'}),
             body: jsonEncode(body),
           )
           .timeout(_timeout);

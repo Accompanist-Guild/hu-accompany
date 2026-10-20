@@ -1,0 +1,815 @@
+{
+  "rule_version": 1,
+  "public_domain_death_year": 1925,
+  "generated_from": "PDMX.csv",
+  "csv_sha256": "fc2187e7e09185f4b28be57b6478a96a1243a037f8fd13624f17de2d8bfd44bd",
+  "scores_considered": 102635,
+  "cleared": 3535,
+  "by_reason": {
+    "composer not recognised": 73816,
+    "license conflict": 25281,
+    "historic composer": 3538
+  },
+  "unrecognised_composers": [
+    [
+      "NA",
+      2452
+    ],
+    [
+      "Traditional",
+      63
+    ],
+    [
+      "Composer",
+      62
+    ],
+    [
+      "Composed by Toby Fox Arranged by Gonzalo Matus",
+      25
+    ],
+    [
+      "Hinci",
+      19
+    ],
+    [
+      "Koji Kondo",
+      19
+    ],
+    [
+      "Toby Fox",
+      18
+    ],
+    [
+      "anon.",
+      16
+    ],
+    [
+      "Maurice Ravel",
+      16
+    ],
+    [
+      "Béla BartókRevised and Arrangedby the Composer January 1945",
+      15
+    ],
+    [
+      "Trad.",
+      14
+    ],
+    [
+      "Realizations by S. Shchetnikov",
+      14
+    ],
+    [
+      "Billie Eilish",
+      13
+    ],
+    [
+      "Arrgt : S. Hermand",
+      13
+    ],
+    [
+      "Composed by Ramin DjawadiPiano arrangement by Nicolas Del GalloFull playthrough and more athttps://www.youtube.com/c/NDGmusicIf you want to donate please check out my Patreon âºhttps://www.patreon.com/ndg",
+      12
+    ],
+    [
+      "Composed by Christopher LarkinArranged by Gonzalo Matus",
+      12
+    ],
+    [
+      "Ramin Djawadi",
+      11
+    ],
+    [
+      "Joe Hisaishi",
+      11
+    ],
+    [
+      "Nobuo Uematsu",
+      11
+    ],
+    [
+      "Arr. LoisCovers",
+      11
+    ],
+    [
+      "Masato Nakamura",
+      10
+    ],
+    [
+      "Akira Senju",
+      9
+    ],
+    [
+      "Twenty One Pilots",
+      9
+    ],
+    [
+      "Ralph Vaughan Williams",
+      9
+    ],
+    [
+      "Composed by Toby FoxArranged by Gonzalo Matus",
+      8
+    ],
+    [
+      "Sergei Rachmaninoff",
+      8
+    ],
+    [
+      "C418",
+      8
+    ],
+    [
+      "Alan Menken",
+      8
+    ],
+    [
+      "ZUN",
+      8
+    ],
+    [
+      "Edward Elgar",
+      8
+    ],
+    [
+      "James Brown",
+      8
+    ],
+    [
+      "Gustav Holst",
+      8
+    ],
+    [
+      "Jean-Baptiste Duvernoy c. 1802 c. 1880",
+      8
+    ],
+    [
+      "My Chemical Romance",
+      7
+    ],
+    [
+      "Astor Piazzolla",
+      7
+    ],
+    [
+      "Hans Zimmer",
+      7
+    ],
+    [
+      "Lewis Capaldi",
+      7
+    ],
+    [
+      "Rickey C Battle jr",
+      6
+    ],
+    [
+      "arr. by b3cquerel",
+      6
+    ],
+    [
+      "John Williams",
+      6
+    ],
+    [
+      "Coldplay",
+      6
+    ],
+    [
+      "Anon.",
+      6
+    ],
+    [
+      "Sam Anderson",
+      6
+    ],
+    [
+      "Carlos Gardel",
+      6
+    ],
+    [
+      "Shoji Meguro",
+      6
+    ],
+    [
+      "Francis Poulenc",
+      6
+    ],
+    [
+      "Trad",
+      6
+    ],
+    [
+      "Junichi Masuda",
+      6
+    ],
+    [
+      "Richard Rodgers",
+      6
+    ],
+    [
+      "Wolfgang Amadeus Mozart Franz Xaver SuÌßmayr",
+      5
+    ],
+    [
+      "Adele",
+      5
+    ],
+    [
+      "Clariana",
+      5
+    ],
+    [
+      "Bartók Béla Sz. 107",
+      5
+    ],
+    [
+      "Masashi Hamauzu",
+      5
+    ],
+    [
+      "Muse",
+      5
+    ],
+    [
+      "Nobuo Uematsuarr. notfge",
+      5
+    ],
+    [
+      "Ennio Morricone",
+      5
+    ],
+    [
+      "Arranged By: Nathan S.",
+      5
+    ],
+    [
+      "Yoko Kanno",
+      5
+    ],
+    [
+      "Galt MacDermot",
+      5
+    ],
+    [
+      "Linkin Park",
+      5
+    ],
+    [
+      "RP",
+      5
+    ],
+    [
+      "Anonymous",
+      5
+    ],
+    [
+      "Fritz Kreisler",
+      5
+    ],
+    [
+      "Antonio Lucio Vivaldi (16781741)",
+      5
+    ],
+    [
+      "Nintendo",
+      5
+    ],
+    [
+      "Andrew Lloyd Webber",
+      4
+    ],
+    [
+      "Traditional Irish",
+      4
+    ],
+    [
+      "Alan Silvestri",
+      4
+    ],
+    [
+      "J. Brahms",
+      4
+    ],
+    [
+      "Murray Gold",
+      4
+    ],
+    [
+      "Danny Elfman",
+      4
+    ],
+    [
+      "Christopher Larkin",
+      4
+    ],
+    [
+      "Nino Rota",
+      4
+    ],
+    [
+      "Duke Ellington",
+      4
+    ],
+    [
+      "Stephen Sondheim",
+      4
+    ],
+    [
+      "Anton DvoÅák",
+      4
+    ],
+    [
+      "John Legend",
+      4
+    ],
+    [
+      "Johann Sebastian Bacharr. André Papillon",
+      4
+    ],
+    [
+      "Yugo Kanno",
+      4
+    ],
+    [
+      "Arr: Lucía Herrera",
+      4
+    ],
+    [
+      "Rickey C Battle Jr",
+      4
+    ],
+    [
+      "Unknown",
+      4
+    ],
+    [
+      "Irving Berlin",
+      4
+    ],
+    [
+      "Beirut",
+      4
+    ],
+    [
+      "Stevie Wonder",
+      4
+    ],
+    [
+      "Sergei Rachmaninoff(1873-1943)",
+      4
+    ],
+    [
+      "Mehrzad Zamini",
+      4
+    ],
+    [
+      "Georges Brassens",
+      4
+    ],
+    [
+      "Takeru Kanazaki",
+      4
+    ],
+    [
+      "M.Ravel",
+      4
+    ],
+    [
+      "arr. by c3L3ry",
+      4
+    ],
+    [
+      "Billy Joel",
+      4
+    ],
+    [
+      "Arr. Pietro Foti",
+      4
+    ],
+    [
+      "Dan + Shay",
+      4
+    ],
+    [
+      "trad.",
+      4
+    ],
+    [
+      "Sam Rahbari",
+      4
+    ],
+    [
+      "Johann Sebastian BachGroßer Bachist",
+      4
+    ],
+    [
+      "Henry Mancini",
+      3
+    ],
+    [
+      "Ludovico Einaudi",
+      3
+    ],
+    [
+      "Adam Guettel",
+      3
+    ],
+    [
+      "Melanie Martinez",
+      3
+    ],
+    [
+      "Koji Kondo arr. G. Oyenard",
+      3
+    ],
+    [
+      "Antonio Carlos Jobim",
+      3
+    ],
+    [
+      "Juan del Encina (1468-1529)",
+      3
+    ],
+    [
+      "Lucky Chops",
+      3
+    ],
+    [
+      "PR",
+      3
+    ],
+    [
+      "The Mechanisms",
+      3
+    ],
+    [
+      "Anne Dudley",
+      3
+    ],
+    [
+      "Adp.: Tiago Hoffmann",
+      3
+    ],
+    [
+      "Boney James and Rick Braun",
+      3
+    ],
+    [
+      "David Bowie",
+      3
+    ],
+    [
+      "One Piece",
+      3
+    ],
+    [
+      "Tones and I",
+      3
+    ],
+    [
+      "Joaquín Turina Pérez (1882 - 1949)",
+      3
+    ],
+    [
+      "Horace Silver",
+      3
+    ],
+    [
+      "Ryuichi Sakamoto",
+      3
+    ],
+    [
+      "Paul Cooper",
+      3
+    ],
+    [
+      "me",
+      3
+    ],
+    [
+      "Michael Giacchino",
+      3
+    ],
+    [
+      "American Folk Song",
+      3
+    ],
+    [
+      "Metallica",
+      3
+    ],
+    [
+      "Transcribed by wizardbab",
+      3
+    ],
+    [
+      "Bon Jovi",
+      3
+    ],
+    [
+      "Quinooa",
+      3
+    ],
+    [
+      "LiSA",
+      3
+    ],
+    [
+      "Karl Jenkins",
+      3
+    ],
+    [
+      "Daniel Ingram",
+      3
+    ],
+    [
+      "Joachim Andersen",
+      3
+    ],
+    [
+      "Jeremy Soule",
+      3
+    ],
+    [
+      "Jule Styne",
+      3
+    ],
+    [
+      "A. Vivaldi",
+      3
+    ],
+    [
+      "Electric Light Orchestra",
+      3
+    ],
+    [
+      "John Denver",
+      3
+    ],
+    [
+      "Lukas Malte Monnerjahnoriginal composer: Arvi Teikari",
+      3
+    ],
+    [
+      "Volkslied",
+      3
+    ],
+    [
+      "Borislav Slavov",
+      3
+    ],
+    [
+      "R. Vaughan Williams",
+      3
+    ],
+    [
+      "John Stafford Smith",
+      3
+    ],
+    [
+      "Tom Brier",
+      3
+    ],
+    [
+      "Francis Poulenc FP 107",
+      3
+    ],
+    [
+      "DJVI",
+      3
+    ],
+    [
+      "arr. Gabe Nunag",
+      3
+    ],
+    [
+      "Anonimo",
+      3
+    ],
+    [
+      "Johnny Marks",
+      3
+    ],
+    [
+      "Composed by Toby Fox Arranged by Manel Návola",
+      3
+    ],
+    [
+      "ANONIMOadattamento per piccola bandadi Alberto Zamolo",
+      3
+    ],
+    [
+      "Kazumi Totaka",
+      3
+    ],
+    [
+      "Kurt Weill",
+      3
+    ],
+    [
+      "Sonya Belousova & Giona Ostinelli",
+      3
+    ],
+    [
+      "Clement Janequin",
+      3
+    ],
+    [
+      "arr. Andrea Motas",
+      3
+    ],
+    [
+      "Zakura",
+      3
+    ],
+    [
+      "Fats Waller",
+      3
+    ],
+    [
+      "Yiruma",
+      3
+    ],
+    [
+      "Andrew Prahlow",
+      3
+    ],
+    [
+      "Antonín DvoÅák",
+      3
+    ],
+    [
+      "Ed Sheeran",
+      3
+    ],
+    [
+      "Kansas",
+      3
+    ],
+    [
+      "Hoagy Carmichael",
+      3
+    ],
+    [
+      "Akira Yamaoka",
+      3
+    ],
+    [
+      "Dmitri Shostakovich",
+      3
+    ],
+    [
+      "Frederik Wiedmann",
+      3
+    ],
+    [
+      "Transcribed by: Sam Anderson",
+      3
+    ],
+    [
+      "R. VAUGHAN WILLIAMS",
+      3
+    ],
+    [
+      "Alexandre Desplat",
+      3
+    ],
+    [
+      "John Lennon",
+      3
+    ],
+    [
+      "Antonio Lucio Vivaldi (1678-1741)",
+      3
+    ],
+    [
+      "Arr. from George F. Handel",
+      3
+    ],
+    [
+      "2CELLOS",
+      3
+    ],
+    [
+      "Grainger arr. Smith",
+      3
+    ],
+    [
+      "Heitor Villa-Lobos",
+      3
+    ],
+    [
+      "Arr. Lakhvir Kumar",
+      2
+    ],
+    [
+      "Arr. Duncan D.",
+      2
+    ],
+    [
+      "Guns N' Roses Arr. Reece Watson",
+      2
+    ],
+    [
+      "G. Clifton Bingham/J. L. Molloy",
+      2
+    ],
+    [
+      "Paul Anthony Romero",
+      2
+    ],
+    [
+      "ASTOR PIAZZOLLAarr. Bruce Xu",
+      2
+    ],
+    [
+      "Dekkadeci",
+      2
+    ],
+    [
+      "Jenny Klein Sonya Belousova & Giona Ostinelli",
+      2
+    ],
+    [
+      "Mozart 1788",
+      2
+    ],
+    [
+      "-Jack Stratton",
+      2
+    ],
+    [
+      "ABBA",
+      2
+    ],
+    [
+      "Sydney McNamar",
+      2
+    ],
+    [
+      "arr. Marc Sabatella",
+      2
+    ],
+    [
+      "Mykola Leontovych",
+      2
+    ],
+    [
+      "Two Steps From Hell",
+      2
+    ],
+    [
+      "Bradley Cooper & Lady Gaga",
+      2
+    ],
+    [
+      "Francisca Gonzaga",
+      2
+    ],
+    [
+      "James Horner",
+      2
+    ],
+    [
+      "Shingeki no Kyojin",
+      2
+    ],
+    [
+      "Call Leonhard von (1767 - 1815)",
+      2
+    ],
+    [
+      "George BUTTERWORTH",
+      2
+    ],
+    [
+      "Felix Blumenfeld(1863-1931)",
+      2
+    ],
+    [
+      "Edvard Hagerup Grieg",
+      2
+    ],
+    [
+      "Marcel Dupré",
+      2
+    ],
+    [
+      "Toots Thielemans",
+      2
+    ],
+    [
+      "Composed by Sonya Belousova & Giona Ostinelli Piano arrangement by Nicolas Del GalloFull playthrough and more athttps://www.youtube.com/c/NDGmusicIf you want to donate please check out my patreon âºhttps://www.patreon.com/ndg",
+      2
+    ],
+    [
+      "Daft Punk",
+      2
+    ],
+    [
+      "Antonis_Greek",
+      2
+    ]
+  ]
+}

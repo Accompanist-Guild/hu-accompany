@@ -30,6 +30,7 @@ from .judges.phase1 import pitch as pitch_judge
 from .judges.phase1 import rhythm as rhythm_judge
 from .judges.phase1 import tempo as tempo_judge
 from .judges.phase2 import era as era_judge
+from .errors import InvalidNoteData
 from .orchestrator import align_notes, judge_phrase, judge_piece
 
 
@@ -115,6 +116,25 @@ class AlignmentTests(TestCase):
         u = [user(note_id=1, dur=100.0), user(note_id=1, dur=480.0)]
         matched, _, extra = align_notes([expected(note_id=1)], u, bpm=120)
         self.assertEqual(matched[0][1].duration_ms, 480.0)
+        self.assertEqual(extra, [])
+
+    def test_an_unplayed_note_does_not_take_its_neighbours_detection(self):
+        # Note 1 was never heard; note 2 was, 200 ms later and tagged as note 2.
+        # Within note 1's window, but it's note 2's: note 1 is missing.
+        e = [expected(note_id=1, start=0.0, dur=200.0), expected(note_id=2, hz=494.0, start=200.0, dur=200.0)]
+        u = [user(note_id=2, hz=494.0, start=200.0, dur=200.0)]
+        matched, missing, extra = align_notes(e, u, bpm=60)
+        self.assertEqual([(m[0].note_id, m[1].note_id) for m in matched], [(2, 2)])
+        self.assertEqual([m.note_id for m in missing], [1])
+        self.assertEqual(extra, [])
+
+    def test_a_wrong_key_without_an_id_is_matched_to_the_note_it_replaced(self):
+        # D played where E was written: one wrong note, not a missing and an extra.
+        e = [expected(note_id=1, hz=659.26, start=0.0), expected(note_id=2, hz=622.25, start=500.0)]
+        u = [user(hz=587.33, start=10.0), user(note_id=2, hz=622.25, start=500.0)]
+        matched, missing, extra = align_notes(e, u, bpm=120)
+        self.assertEqual(sorted((m[0].note_id, round(m[1].pitch_hz)) for m in matched), [(1, 587), (2, 622)])
+        self.assertEqual(missing, [])
         self.assertEqual(extra, [])
 
     def test_id_hint_rejected_when_outside_window(self):
@@ -312,6 +332,41 @@ class JudgePhraseTests(TestCase):
         )
         self.assertEqual(result["feedback"][0]["details"]["issue"], "missing_note")
         self.assertEqual(result["scores"]["pitch"], 0)
+
+
+class PrintedBarTests(TestCase):
+    def _phrase(self, with_bars):
+        def note(note_id, start, bar):
+            raw = {"note_id": note_id, "pitch_hz": 440.0, "start_time_ms": start, "end_time_ms": start + 200.0,
+                   "duration_ms": 200.0}
+            if with_bars:
+                raw["bar"] = bar
+            return raw
+        # 3/8 at 72 crotchets a minute: a bar is 1250 ms. The first note is a
+        # pickup (printed bar 0), so bar 1 starts at 417 ms, not at 0.
+        return judge_phrase(
+            phrase=1, bpm=72.0, time_signature="3/8",
+            expected_notes=[note(1, 0.0, 0), note(2, 417.0, 1), note(3, 1667.0, 2)],
+            user_notes=[],  # all missing: one finding per note, at its bar
+        )
+
+    def test_findings_use_the_bar_the_score_prints(self):
+        result = self._phrase(with_bars=True)
+        self.assertEqual([f["bars"] for f in result["feedback"]], [0, 1, 2])
+        self.assertEqual(result["bars"], [1, 2])
+
+    def test_without_printed_bars_bars_are_counted_from_the_time(self):
+        result = self._phrase(with_bars=False)
+        self.assertEqual([f["bars"] for f in result["feedback"]], [1, 1, 2])
+
+    def test_a_bad_bar_is_rejected(self):
+        with self.assertRaises(InvalidNoteData):
+            judge_phrase(
+                phrase=1, bpm=72.0,
+                expected_notes=[{"note_id": 1, "pitch_hz": 440.0, "start_time_ms": 0.0, "end_time_ms": 1.0,
+                                 "duration_ms": 1.0, "bar": "one"}],
+                user_notes=[],
+            )
 
 
 class BarBoxTests(TestCase):

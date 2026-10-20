@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'package:hu_accomponist/features/practice/Exercise.dart';
 import 'package:hu_accomponist/features/practice/Phrase_Assembler.dart';
+import 'package:hu_accomponist/features/practice/practice_feedback.dart';
 import 'package:hu_accomponist/integrations/audio/Rust_Session.dart';
 import 'package:hu_accomponist/integrations/feedback/Phrase_send2_server.dart';
 import 'package:hu_accomponist/integrations/feedback/Pull_back_phrase.dart';
@@ -38,6 +39,19 @@ class ExerciseSession extends ChangeNotifier {
   /// The count-in beat being shown (1..[countInBeats]), or null.
   int? countIn;
 
+  /// What the feedback generator has said so far this run, in the order it
+  /// arrived. The exercise view shows these next to the notes they are about.
+  final List<PracticeNotice> notices = [];
+
+  /// The notices the latest judged bar added, for the view to announce.
+  /// Replaced (not appended to) on each bar.
+  List<PracticeNotice> latest = const [];
+
+  /// Whether [item] is shown on the notes themselves, so the phrase card can
+  /// leave it out instead of saying it twice.
+  bool isAnchored(PhraseFeedbackItem item) =>
+      PracticeNotice.writtenNoteId(item, notes) != null;
+
   /// When the first note should be played. Drives the metronome pulse and
   /// the highlighted note. Null outside a recording.
   DateTime? downbeat;
@@ -63,6 +77,8 @@ class ExerciseSession extends ChangeNotifier {
 
     _assembler = PhraseAssembler(notes);
     _sessionId = null;
+    notices.clear();
+    latest = const [];
     final beat = Duration(microseconds: (beatMs * 1000).round());
 
     for (var i = 1; i < countInBeats; i++) {
@@ -75,10 +91,16 @@ class ExerciseSession extends ChangeNotifier {
     }
 
     if (_disposed) return 'cancelled';
-    downbeat = DateTime.now().add(beat);
-    _set(countIn: countInBeats);
+    startClock(DateTime.now().add(beat));
     _downbeatTimer = Timer(beat, () => _set(countIn: null));
     return null;
+  }
+
+  /// Starts the exercise's clock at [at], the moment of the first note.
+  /// Drives the highlighted note and the metronome pulse.
+  void startClock(DateTime at) {
+    downbeat = at;
+    _set(countIn: countInBeats);
   }
 
   /// A batch from Rust's notesStream.
@@ -124,6 +146,16 @@ class ExerciseSession extends ChangeNotifier {
     );
     if (report == null || _disposed) return;
     _sessionId ??= report.sessionId;
+    receive(report);
+  }
+
+  /// A judged bar came back from the feedback generator: keep what it said
+  /// about the notes, tell the view, and pass the report on.
+  void receive(PhraseReport report) {
+    if (_disposed) return;
+    latest = PracticeNotice.fromReport(report, notes);
+    notices.addAll(latest);
+    notifyListeners();
     onReport(report);
   }
 

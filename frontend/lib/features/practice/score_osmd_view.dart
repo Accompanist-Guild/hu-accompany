@@ -2,6 +2,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import 'package:hu_accomponist/features/practice/live_judge.dart';
+import 'package:hu_accomponist/features/practice/practice_prefs.dart';
+import 'package:hu_accomponist/features/practice/score_timeline.dart';
+
 /// Points at one specific note inside the score — zero-based measure,
 /// voice-entry, and note-within-that-voice-entry index, in the same order
 /// the notes appear in the source MusicXML. This is how "this note was
@@ -47,6 +51,18 @@ class ScoreOsmdController {
   /// Called with the score's strokes (JSON) whenever the ink changes, so
   /// they can be kept for next time.
   void Function(String strokesJson)? onInkChanged;
+
+  /// Called once a loaded score's notes have been read off it (see
+  /// `assets/osmd/score_timeline.js`): what there is to play, and when. An
+  /// empty timeline means the score has no notes this app can follow.
+  void Function(ScoreTimeline timeline)? onTimeline;
+
+  /// A note was tapped: the timeline ids drawn there, nearest first (a
+  /// repeat draws several ids on one note).
+  void Function(List<int> ids)? onNoteTap;
+
+  /// A note was tapped while picking a place to start ([setPicking]).
+  void Function(List<int> ids)? onNotePick;
 
   /// The ink the next loaded score starts with (see [setInk]).
   String _inkJson = '[]';
@@ -130,6 +146,56 @@ class ScoreOsmdController {
   Future<void> resetColors() async {
     _call('OSMDBridge.resetColors();');
   }
+
+  /// Shows what is happening as the score is played: how each note went
+  /// (see `OSMDBridge.live` in osmd_viewer.html for how each verdict is
+  /// drawn), the notes due now (they sway) and the notes just played (they
+  /// hop). Notes are timeline ids. [follow] keeps the next note in view while
+  /// a recording runs.
+  void live(LiveUpdate update, {bool? follow}) {
+    final payload = jsonEncode({
+      if (update.marks.isNotEmpty)
+        'marks': [
+          for (final e in update.marks.entries)
+            {
+              'id': e.key,
+              'r': e.value.result.name,
+              'played': ?e.value.playedMidi,
+              'shift': ?e.value.offShare,
+            },
+        ],
+      if (update.cleared.isNotEmpty) 'cleared': update.cleared,
+      'due': ?update.due,
+      if (update.played.isNotEmpty) 'played': update.played,
+      'follow': ?follow,
+    });
+    _call('OSMDBridge.live($payload);');
+  }
+
+  /// Every note back as written, for a new run.
+  void resetLive() => _call('OSMDBridge.resetLive();');
+
+  /// The colours notes turn (see [PracticePrefs]).
+  void setColors(NoteColors colors) => _call(
+    'OSMDBridge.setColors(${jsonEncode({'perfect': _hex(colors.perfect), 'close': _hex(colors.close), 'wrong': _hex(colors.wrong)})});',
+  );
+
+  /// A small note beside note [id]: [lines] first in bold, the rest smaller.
+  /// Hidden by the next tap or scroll, or [hideTip].
+  void showTip(int id, List<String> lines) =>
+      _call('OSMDBridge.showTip($id, ${jsonEncode(lines)});');
+
+  void hideTip() => _call('OSMDBridge.hideTip();');
+
+  /// Scrolls to note [id] and darkens and blurs everything else, until the
+  /// next tap or scroll.
+  void spotlight(int id) => _call('OSMDBridge.spotlight($id);');
+
+  /// While on, a tapped note goes to [onNotePick] instead of [onNoteTap].
+  void setPicking(bool on) => _call('OSMDBridge.setPicking($on);');
+
+  /// Zooms in (factor > 1) or out, keeping the middle of the screen in place.
+  void zoomBy(double factor) => _call('OSMDBridge.zoomBy($factor);');
 }
 
 /// Renders MusicXML with OpenSheetMusicDisplay inside a WebView. OSMD owns
@@ -216,6 +282,33 @@ class _ScoreOsmdViewState extends State<ScoreOsmdView> {
         break;
       case 'loaded':
         if (mounted) setState(() => _loading = false);
+        break;
+      case 'timeline':
+        final payload = data['payload'] as Map<String, dynamic>? ?? const {};
+        if (payload['error'] != null) {
+          debugPrint(
+            '[Diagnostics] score: could not read its notes — ${payload['error']}',
+          );
+        }
+        final timeline = ScoreTimeline.fromJson(payload);
+        debugPrint(
+          '[Diagnostics] score: ${timeline.notes.length} notes to follow, '
+          '${timeline.bpm} bpm, ${timeline.timeSignature}',
+        );
+        widget.controller.onTimeline?.call(timeline);
+        break;
+      case 'noteTap':
+      case 'notePick':
+        final ids = [
+          for (final id in (data['payload']?['ids'] as List? ?? const []))
+            (id as num).toInt(),
+        ];
+        if (ids.isEmpty) break;
+        if (data['type'] == 'notePick') {
+          widget.controller.onNotePick?.call(ids);
+        } else {
+          widget.controller.onNoteTap?.call(ids);
+        }
         break;
       case 'ink':
         widget.controller._inkMessage(data['payload'] as Map<String, dynamic>?);

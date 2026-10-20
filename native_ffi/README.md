@@ -70,14 +70,28 @@ with the right type, or the call fails.
   detects, and the app uses it to tell when a bar is finished.
 - `timing` needs `beat_unit`. The backend's `/api/score/process` returns
   `time_signature` instead, so its `piece_data` cannot be passed in as-is.
+- `follow_tempo` (optional, default `false`) follows the player's tempo
+  instead of holding them to the written one. The app turns it on for scores
+  and leaves it off for the exercises. See [Following the player](#following-the-player).
 
 ### What Dart receives
 
-Each batch is a list of `Notes`. A note is sent **once, when it ends** (or
-when recording stops, if it is still sounding): `start_time_ms`, `end_time_ms`
-and `duration_ms` are set, `pitch_hz` is the median of what was heard, and
-`note_id` is the score note it matches. Times are in the score's clock, in
-milliseconds. A note is delivered a few hundred milliseconds after it ends
+Each batch is a list of `Notes`, of three kinds:
+
+- **A note starting**: `end_time_ms` and `duration_ms` are `null`. Sent as
+  soon as the note is recognised (about 0.3 s after it is played), so the app
+  can show it being played. `pitch_hz` is what was heard so far.
+- **A note finished**: sent **once, when it ends** (or when recording stops,
+  if it is still sounding). `start_time_ms`, `end_time_ms` and `duration_ms`
+  are set, and `pitch_hz` is the median of what was heard. This is the record
+  that gets judged.
+- **A wrong key** (`note_id` 0): a key the score has neither due nor sounding
+  at that moment, heard as a fresh attack (`stray.rs`; neural evidence only).
+  Sent on its attack (no end) and again on its release. `pitch_hz` is the
+  key's pitch.
+
+`note_id` is the score note matched. Times are in the score's clock, in
+milliseconds. A finished note is delivered a few hundred milliseconds after it ends
 (median ~0.5 s on real piano, longer for notes that ring on).
 
 If Dart has stopped listening, notes stay in `get_user_data()` instead of
@@ -135,6 +149,44 @@ Consequences:
 - Samples that were never captured cannot be recovered: if the microphone opens
   *after* the player has started, the clock starts at the first note that *is*
   heard.
+
+## Following the player
+
+A whole piece isn't played to a metronome. Held to the written tempo, a player
+5% slow is a semiquaver behind after a few bars, outside every window, and
+nothing more is recognised. With `follow_tempo` (`NoteTracker::following`):
+
+- **The clock moves to every heard onset**, and the tempo is the slope of score
+  time against heard time over the last 12 onsets (at most 5 s back). One
+  onset-to-onset gap is mostly the detector's jitter, so no single note sets it.
+- **Onsets are still judged.** A note's start is reported where the tempo kept
+  up to it put the player, before the clock moves to it, so a rushed or dragged
+  note reads as one.
+- **The clock waits for the player.** It never runs past the window of the
+  earliest note neither heard nor skipped (a later note was heard). While it
+  waits, the next 3 onsets after that note are listened for too, so a note
+  played unheard (or skipped) doesn't stall it. Anything that starts while it
+  waits needs a clearer sound (`recover_confidence`), so room noise in a long
+  pause doesn't move the score on.
+- **Windows scale with the note**: 30% of its written length either side,
+  between 85 and 180 ms.
+
+Measured on rendered practice runs of Für Elise (FluidR3 piano, the player at
+65-110% of the written tempo with +-4-6% drift, a 2-4.5 s pause, 5-12 wrong
+keys, 2-5 skipped notes; `fixtures/piano/perform.py`, `examples/practice.rs`):
+
+| | written tempo (exercises) | following |
+|---|---|---|
+| notes played as written that were heard | 25% | 95-100% (97.8% over the whole piece) |
+| onset error against the local tempo, p10 .. p90 | | -75 .. +85 ms, median +5 ms |
+| wrong keys caught | | 70-100% (misses are a semitone next to a written neighbour) |
+| keys reported wrong that weren't | | 0-9 per 45 s, mostly in the E-D# trill |
+
+```sh
+node fixtures/piano/score_to_timeline.js score.musicxml /tmp/t.json   # needs jsdom
+python3 fixtures/piano/perform.py /tmp/t.json /tmp/run --seconds 45 --tempo 0.85
+cargo run --release --example practice -- /tmp/run/performance.wav /tmp/run/piece.json --truth /tmp/run/truth.json
+```
 
 ## Audio intake and session lifecycle
 
@@ -269,6 +321,8 @@ cargo test --lib
 | `tracker::test_end_is_stamped_where_the_level_fell_*` and two more | End stamps follow the release, not the noise floor, without cutting held notes short or splitting them |
 | `audio::capture_tests::*` | Sample formats, no allocation in the callback, a stuck consumer, the error status, silent input, stalled stream |
 | `lifecycle_tests::*` | Waiting for the last recording's notes, nothing stale in the next session, switching pieces while recording, the C error message |
+| `tracker::test_following_*`, `test_onsets_are_reported_*` | Keeping up with a slower or faster player, a pause, a skipped note, a rushed note still reported early; onsets sent as notes start |
+| `stray::tests::*` | Wrong keys reported on attack and release; not the written note, its octaves, spill-over onto a neighbour, a key already ringing, or a click |
 
 `cargo test --lib` runs on any machine with the ALSA headers
 (`libasound2-dev`) and needs no fixtures. These need downloaded fixtures
@@ -315,8 +369,11 @@ flutter_rust_bridge is now pinned to **2.13.0** on both sides
 (`Cargo.toml` and `frontend/pubspec.yaml`). The installed code generator was
 2.13, and it bumps both pins from 2.12.0 when it runs.
 
-macOS builds do not link this library at all, so Rust features are
-unavailable there.
+macOS builds it as part of the app build: `frontend/rust_builder` (cargokit)
+compiles this crate for Apple silicon and Intel and links it into the app, and
+`RustBridge` looks the symbols up in the running process, as on iOS. It needs
+both Rust targets installed: `rustup target add aarch64-apple-darwin
+x86_64-apple-darwin`.
 
 ## Known limitations
 
@@ -325,8 +382,12 @@ unavailable there.
   bin, around C5 two thirds.
 - **One note at a time.** Chords and sustained piano pedal will confuse the
   "loudest candidate" rule.
-- **Strict timing.** Notes more than 85 ms from where the score expects them
-  fall outside their window and are not recognised.
+- **Strict timing (exercises).** Without `follow_tempo`, notes more than 85 ms
+  from where the score expects them fall outside their window and are not
+  recognised.
+- **Repeated pitches.** Following a fast alternation of two notes (Für Elise's
+  E-D#), a skipped note can't be told from the next one of the same pitch, and
+  a wrong key that is a written neighbour's pitch isn't reported as wrong.
 - **Fixed volume threshold.** Very quiet playing may not register, and very
   loud playing can make a neighbouring note look like it is sounding.
 - **`get_current_targets` clones every note of the piece on each analysis

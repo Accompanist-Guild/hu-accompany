@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import 'package:hu_accomponist/integrations/scores/score_models.dart';
 import 'package:hu_accomponist/integrations/server/ServerDiscovery.dart';
+import 'package:hu_accomponist/integrations/server/server_auth.dart';
 
 /// Loads scores from the backend's /api/scores endpoints.
 ///
@@ -70,7 +71,7 @@ class ScoreRepository {
     }
     final uri = Uri.parse('$baseUrl$path').replace(queryParameters: query);
     try {
-      return await http.get(uri).timeout(_timeout);
+      return await http.get(uri, headers: ServerAuth.headers()).timeout(_timeout);
     } on Exception {
       return null;
     }

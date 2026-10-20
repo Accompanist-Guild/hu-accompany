@@ -11,6 +11,20 @@ these two weeks: what changed, why, and what is still open. For detail, see:
 
 ## Needs action from the team
 
+> **Status as of 2026-10-17** (the list below is as written on Sep 30):
+> - **Item 1 (OMR): out of scope.** The first priority is scores from MusicXML, not
+>   reading PDFs. The code is still broken (`enhance_music_pdf` doesn't write its
+>   output PDF or report page errors, and oemer's model file isn't installed) and
+>   is left as it is.
+> - **Item 2 (quiz route): done.** `backend/api/urls.py` includes `quiz.urls`.
+> - **Item 5 (`.local.local`): fixed** in `backend/api/mdns.py`, and so is the
+>   `NonUniqueNameException` when a second server starts.
+> - **Housekeeping:** the unused `Dart_ffi_bridge.dart` and `ios/Runner/recording_bridge.c`
+>   are removed.
+> - **Python dependencies:** `backend/requirements.txt` is now the only list
+>   (`pyproject.toml` and `uv.lock` had drifted from it).
+> - The rest is unchanged.
+
 1. **The OMR pipeline doesn't work** (`/api/score/process`, backend). It is
    the step that should read notes off a PDF, and it fails in two places:
    - `image_enhancer/enhancer_script.py`: `enhance_music_pdf` enhances each

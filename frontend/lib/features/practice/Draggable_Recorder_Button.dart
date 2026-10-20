@@ -11,8 +11,46 @@ import 'package:hu_accomponist/src/rust/api.dart';
 import 'package:hu_accomponist/integrations/audio/Audio_Native.dart';
 import 'package:hu_accomponist/integrations/audio/Rust_Bridge.dart';
 
+/// What the buttons that swipe out of the recorder do (see
+/// [Draggable_Recorder_Button.actionsEnabled]).
+enum RecorderAction {
+  /// Stop listening for now, to look around the score; tap to go on.
+  pause,
+
+  /// Start over from the first note.
+  restart,
+
+  /// Pick a note on the score to start again from.
+  fromNote,
+}
+
+/// Lets the practice screen go on with a paused recording, e.g. once the
+/// player has picked the note to start again from.
+class RecorderController {
+  _Draggable_Recorder_ButtonState? _state;
+
+  bool get isPaused => _state?._paused ?? false;
+
+  /// Continues a paused recording (through [Draggable_Recorder_Button.onBeforeResume]).
+  Future<void> resume() async => _state?._resume();
+}
+
 class Draggable_Recorder_Button extends StatefulWidget {
   final void Function(bool isRecording) onToggle;
+
+  /// Whether swiping right on the button while recording (or paused) offers
+  /// [RecorderAction]s. A paused recording offers Finish instead of Pause.
+  final bool actionsEnabled;
+
+  /// Carries out an action. For [RecorderAction.restart] it also gets the
+  /// piece ready again (count-in) and returns whether to start listening;
+  /// for the others the return value is ignored.
+  final Future<bool> Function(RecorderAction action)? onAction;
+
+  /// Runs before listening again after a pause; false keeps it paused.
+  final Future<bool> Function()? onBeforeResume;
+
+  final RecorderController? controller;
 
   /// Tints the pulse halo — lets the score screen reflect the last phrase's
   /// verdict without any extra chrome on top of the button.
@@ -40,6 +78,10 @@ class Draggable_Recorder_Button extends StatefulWidget {
     this.onBeforeCapture,
     this.onError,
     this.accent = const Color(0xFF9A7A2C),
+    this.actionsEnabled = false,
+    this.onAction,
+    this.onBeforeResume,
+    this.controller,
   });
 
   @override
@@ -50,6 +92,18 @@ class Draggable_Recorder_Button extends StatefulWidget {
 class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
     with SingleTickerProviderStateMixin {
   bool _isRecording = false;
+
+  /// Stopped listening part-way through, to go on later.
+  bool _paused = false;
+
+  /// The swiped-out action buttons are showing.
+  bool _fanOpen = false;
+  Timer? _fanTimer;
+
+  /// Sideways travel of the current swipe on the button.
+  double _swipe = 0;
+
+  static const double _fanWidth = 132.0;
 
   /// True while [Draggable_Recorder_Button.onBeforeCapture] runs, so a
   /// second tap during the count-in is ignored.
@@ -62,9 +116,7 @@ class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
   /// along with them. Kept as notifiers so each drives only the one
   /// subtree that reads it.
   final ValueNotifier<Duration> _elapsed = ValueNotifier(Duration.zero);
-  final ValueNotifier<Offset> _position = ValueNotifier(
-    const Offset(20, 400),
-  );
+  final ValueNotifier<Offset> _position = ValueNotifier(const Offset(20, 400));
 
   // Owns the live notesStream() subscription for the current recording.
   // Null whenever we're not recording.
@@ -92,10 +144,22 @@ class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
     super.initState();
     _pulseCtrl = AnimationController(vsync: this, duration: _idlePeriod)
       ..repeat();
+    widget.controller?._state = this;
+  }
+
+  @override
+  void didUpdateWidget(Draggable_Recorder_Button old) {
+    super.didUpdateWidget(old);
+    if (old.controller != widget.controller) {
+      old.controller?._state = null;
+      widget.controller?._state = this;
+    }
   }
 
   @override
   void dispose() {
+    widget.controller?._state = null;
+    _fanTimer?.cancel();
     _timer?.cancel();
     // Leaving the screen mid-recording must not leave the microphone open.
     if (_isRecording) AudioNative().end();
@@ -179,6 +243,7 @@ class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
 
   Future<void> _toggle() async {
     if (_starting) return;
+    _closeFan();
 
     if (_isRecording) {
       // Lighter than the start tick: stopping is a release, and the two
@@ -194,24 +259,37 @@ class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
       return;
     }
 
+    if (_paused) {
+      await _resume();
+      return;
+    }
+
+    if (await _listen(widget.onBeforeCapture)) {
+      _elapsed.value = Duration.zero;
+      widget.onToggle(true);
+    }
+  }
+
+  /// Gets permission, runs [before] (the count-in), then opens the
+  /// microphone. True once listening.
+  Future<bool> _listen(Future<bool> Function()? before) async {
     // Permission and audio session first: the system prompt must not land
     // in the middle of the count-in.
     setState(() => _starting = true);
     final blocked = await AudioNative().prepare();
-    if (!mounted) return;
+    if (!mounted) return false;
     if (blocked != null) {
       setState(() => _starting = false);
       widget.onError?.call(blocked);
-      return;
+      return false;
     }
 
-    final before = widget.onBeforeCapture;
     if (before != null) {
       final proceed = await before();
-      if (!mounted) return;
+      if (!mounted) return false;
       if (!proceed) {
         setState(() => _starting = false);
-        return;
+        return false;
       }
     } else {
       // With a count-in the haptics already happened; a vibration now
@@ -222,23 +300,84 @@ class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
     // Open the microphone before showing "recording": if it cannot open the
     // player must be told, not left talking to a dead button.
     final failure = await _startRecording();
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() => _starting = false);
     if (failure != null) {
       widget.onError?.call(failure);
-      return;
+      return false;
     }
 
-    setState(() => _isRecording = true);
-    _elapsed.value = Duration.zero;
+    setState(() {
+      _isRecording = true;
+      _paused = false;
+    });
     _pulseCtrl.duration = _recordingPeriod;
     _pulseCtrl.repeat();
+    _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       _elapsed.value += const Duration(seconds: 1);
       _reportAudioProblem();
     });
-    widget.onToggle(true);
+    return true;
   }
+
+  /// Stops listening but keeps the recording, to go on later.
+  Future<void> _pause() async {
+    if (!_isRecording) return;
+    HapticFeedback.lightImpact();
+    _timer?.cancel();
+    setState(() {
+      _isRecording = false;
+      _paused = true;
+    });
+    _pulseCtrl.duration = _idlePeriod;
+    _pulseCtrl.repeat();
+    await _stopRecording();
+  }
+
+  Future<void> _resume() async {
+    if (!_paused || _starting) return;
+    await _listen(widget.onBeforeResume);
+  }
+
+  Future<void> _act(RecorderAction? action) async {
+    _closeFan();
+    if (_starting) return;
+    final onAction = widget.onAction;
+    if (action == null) {
+      // Finish, from a pause: the recording is over.
+      setState(() => _paused = false);
+      widget.onToggle(false);
+      return;
+    }
+    await _pause();
+    if (!mounted || onAction == null) return;
+    switch (action) {
+      case RecorderAction.pause:
+      case RecorderAction.fromNote:
+        await onAction(action);
+      case RecorderAction.restart:
+        if (await _listen(() => onAction(RecorderAction.restart))) {
+          _elapsed.value = Duration.zero;
+        }
+    }
+  }
+
+  void _openFan() {
+    if (_fanOpen) return;
+    HapticFeedback.selectionClick();
+    setState(() => _fanOpen = true);
+    _fanTimer?.cancel();
+    // Put away again if nothing is chosen.
+    _fanTimer = Timer(const Duration(seconds: 5), _closeFan);
+  }
+
+  void _closeFan() {
+    _fanTimer?.cancel();
+    if (_fanOpen && mounted) setState(() => _fanOpen = false);
+  }
+
+  bool get _swipeable => widget.actionsEnabled && (_isRecording || _paused);
 
   static String _format(Duration elapsed) {
     final m = elapsed.inMinutes.remainder(60).toString().padLeft(2, '0');
@@ -251,6 +390,7 @@ class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
     // Built once per real state change and threaded through the position
     // builder as `child`, so dragging only re-runs the Positioned above it.
     final content = GestureDetector(
+      onPanStart: (_) => _swipe = 0,
       onPanUpdate: _onPanUpdate,
       onTap: _toggle,
       child: Column(
@@ -268,8 +408,8 @@ class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
                         Text(_format(elapsed), style: _labelStyle(true)),
                   )
                 : Text(
-                    'Tap to record',
-                    key: const ValueKey(false),
+                    _paused ? 'Paused' : 'Tap to record',
+                    key: ValueKey(_paused),
                     style: _labelStyle(false),
                   ),
           ),
@@ -326,12 +466,112 @@ class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
     return ValueListenableBuilder<Offset>(
       valueListenable: _position,
       child: content,
-      builder: (context, pos, child) =>
-          Positioned(left: pos.dx, top: pos.dy, child: child!),
+      builder: (context, pos, child) {
+        if (!_fanOpen)
+          return Positioned(left: pos.dx, top: pos.dy, child: child!);
+        // The buttons come out on whichever side has room.
+        final onLeft =
+            pos.dx + _buttonWidth + _fanWidth >
+            MediaQuery.sizeOf(context).width;
+        final fan = _fan(onLeft);
+        return Positioned(
+          left: onLeft ? pos.dx - _fanWidth : pos.dx,
+          top: pos.dy,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: onLeft ? [fan, child!] : [child!, fan],
+          ),
+        );
+      },
+    );
+  }
+
+  /// The three action buttons, fanned out in an arc beside the button.
+  Widget _fan(bool onLeft) {
+    final items = [
+      _paused
+          ? (Icons.stop_rounded, 'Finish', null)
+          : (Icons.pause_rounded, 'Pause', RecorderAction.pause),
+      (Icons.replay_rounded, 'Restart', RecorderAction.restart),
+      (Icons.ads_click_rounded, 'From a note', RecorderAction.fromNote),
+    ];
+    return SizedBox(
+      width: _fanWidth,
+      height: _buttonHeight,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: Motion.base,
+        curve: Motion.enter,
+        builder: (context, t, _) => Stack(
+          children: [
+            for (var i = 0; i < items.length; i++)
+              Positioned(
+                // An arc: the middle one furthest out.
+                left: onLeft ? null : (i == 1 ? 34.0 : 10.0) * t,
+                right: onLeft ? (i == 1 ? 34.0 : 10.0) * t : null,
+                top: 8.0 + i * 48.0,
+                child: Opacity(
+                  opacity: t,
+                  child: _fanButton(items[i].$1, items[i].$2, items[i].$3),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _fanButton(IconData icon, String label, RecorderAction? action) {
+    return Semantics(
+      button: true,
+      label: label,
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: () => _act(action),
+        child: Container(
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: Space.sm),
+          decoration: BoxDecoration(
+            color: PracticePalette.paper,
+            borderRadius: Radii.pillRadius,
+            border: Border.all(color: PracticePalette.lightGold),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: PracticePalette.gold),
+              const SizedBox(width: Space.xxs + 2),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: PracticePalette.brown,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
   void _onPanUpdate(DragUpdateDetails details) {
+    // While recording, a sideways swipe on the button brings the actions
+    // out (right) or puts them away (left) instead of moving it.
+    if (_swipeable) {
+      _swipe += details.delta.dx;
+      if (_swipe > 24) _openFan();
+      if (_swipe < -24) _closeFan();
+      return;
+    }
     final screenSize = MediaQuery.of(context).size;
     final maxX = screenSize.width - _buttonWidth;
     final maxY = screenSize.height - _buttonHeight;
@@ -343,9 +583,7 @@ class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
   }
 
   TextStyle _labelStyle(bool recording) => TextStyle(
-    color: recording
-        ? RecorderPalette.labelActive
-        : RecorderPalette.labelIdle,
+    color: recording ? RecorderPalette.labelActive : RecorderPalette.labelIdle,
     fontSize: 14,
     fontWeight: FontWeight.w600,
     letterSpacing: 1.2,
@@ -406,8 +644,12 @@ class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
         child: ScaleTransition(scale: animation, child: child),
       ),
       child: Icon(
-        _isRecording ? Icons.stop_rounded : Icons.mic_rounded,
-        key: ValueKey(_isRecording),
+        _isRecording
+            ? Icons.stop_rounded
+            : _paused
+            ? Icons.play_arrow_rounded
+            : Icons.mic_rounded,
+        key: ValueKey((_isRecording, _paused)),
         color: RecorderPalette.icon,
         size: 30,
       ),

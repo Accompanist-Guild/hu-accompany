@@ -16,16 +16,53 @@
     #score { padding: 8px 4px 24px; }
     #ink { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
     #ink path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* Live practice (OSMDBridge.live). A note due to be played sways a little,
+       now and then, so the eye finds it without it shouting; a note just
+       played gives a small hop. Both move the whole note (head and stem). */
+    .hu-due { animation: hu-due 1.3s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 80%; }
+    @keyframes hu-due {
+      0%, 46%, 100% { transform: rotate(0deg); }
+      10% { transform: rotate(-5deg); }
+      22% { transform: rotate(4deg); }
+      34% { transform: rotate(-2deg); }
+    }
+    .hu-jump { animation: hu-jump 360ms cubic-bezier(.3, .7, .35, 1); transform-box: fill-box; transform-origin: 50% 100%; }
+    @keyframes hu-jump {
+      0% { transform: translateY(0) scale(1); }
+      38% { transform: translateY(-7px) scale(1.08); }
+      72% { transform: translateY(1px) scale(.98); }
+      100% { transform: translateY(0) scale(1); }
+    }
+    /* A mistake flashes for a few seconds, then stays. */
+    .hu-flash { animation: hu-flash 500ms ease-in-out; }
+    @keyframes hu-flash { 0%, 100% { opacity: 1; } 50% { opacity: 0.12; } }
+    .hu-tip {
+      position: absolute; z-index: 5; max-width: 240px; padding: 7px 11px; border-radius: 10px;
+      background: #FFFCF4; color: #30271F; border: 1px solid #D8C58D; box-shadow: 0 4px 14px rgba(48, 39, 31, .18);
+      font: 600 13px/1.35 -apple-system, system-ui, sans-serif; pointer-events: none;
+    }
+    .hu-tip .hu-tip-more { font-weight: 400; font-size: 12px; color: #75695B; margin-top: 3px; }
+    .hu-spot-holder { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: hidden; z-index: 8; }
+    .hu-spot { position: absolute; left: 0; top: 0; z-index: 8; background: rgba(27, 24, 20, .5);
+      -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+    .hu-spot-ring { position: absolute; z-index: 9; border-radius: 50%; box-shadow: 0 0 0 2px #E0B43A, 0 0 18px 4px rgba(224, 180, 58, .45);
+      pointer-events: none; }
+    body.picking .vf-stavenote { cursor: pointer; }
+    @media (prefers-reduced-motion: reduce) {
+      .hu-due, .hu-jump, .hu-flash { animation: none; }
+    }
   </style>
   <!-- Bundled locally (OSMD 2.2.0, BSD-3-Clause, see LICENSE.txt) so the
        score renders without network access. -->
   <script src="opensheetmusicdisplay.min.js"></script>
+  <script src="score_timeline.js"></script>
 </head>
 <body>
   <div id="page"><div id="score"></div><svg id="ink" xmlns="http://www.w3.org/2000/svg"></svg></div>
   <script>
     // Bridge between Flutter (score_osmd_view.dart) and OSMD. Every message back to Flutter is
-    // JSON: {type: 'bridgeReady' | 'loaded' | 'error' | 'ink' | 'zoom', payload?: {...}}.
+    // JSON: {type: 'bridgeReady' | 'loaded' | 'timeline' | 'error' | 'ink' | 'zoom', payload?: {...}}.
     //
     // Pen ink lives here, inside the scrolled page, so it moves with the music. Each stroke is
     // pinned to the bar it starts on (its measure and staff), so when the music is laid out again
@@ -57,13 +94,14 @@
       var userScale = 1;
       function fitZoom() {
         var width = document.getElementById('score').clientWidth || window.innerWidth;
-        osmd.zoom = Math.max(0.3, Math.min(1, width / PAGE_WIDTH_PX)) * userScale;
+        osmd.zoom = Math.max(0.3, Math.min(1.5, width / PAGE_WIDTH_PX)) * userScale;
       }
 
       function render() {
         osmd.render();
         boxes = null;
         drawInk();
+        applyLive();  // a new engraving: mark its notes again
       }
 
       var resizeTimer;
@@ -329,12 +367,497 @@
         return entries;
       }
 
+      // ── Live practice ─────────────────────────────────────────────────
+      // The app (score_practice_session.dart) sends, by timeline note id, how
+      // each note went; this draws it on the engraving:
+      //   perfect / close   the whole note (head, stem, flag, its accidental)
+      //                     in the perfect or close colour;
+      //   missed            the whole note in the wrong colour, flashing;
+      //   wrong             the written note as it is, plus a hollow note in the
+      //                     wrong colour at the key that was played, flashing;
+      //   early / late      the written note hollow, plus a hollow note shifted
+      //                     to where it was played, flashing.
+      // A note a repeat plays more than once is outlined instead, filled a little
+      // more by each time through, in the colour of the latest.
+      // Marks are kept here and drawn again after every re-render (zoom,
+      // rotation), so they last until the next run.
+      var timeline = null;        // ScoreTimeline.extract() of the loaded score
+      var marks = {};             // id -> {r, played, shift, at}
+      var dueIds = [];
+      var following = false;
+      var lastTouch = 0;
+      var picking = false;
+      var COLORS = { perfect: '#6DBE8C', close: '#E0B43A', wrong: '#D9534F' };
+      var FLASH_MS = 3000;
+      var NS = 'http://www.w3.org/2000/svg';
+      var occurrences = null;     // source note -> [ids], in time order
+      var drawn = new Map();      // source note -> {parts: [el], ghosts: [el]}
+
+      function colorOf(r) {
+        return r === 'perfect' ? COLORS.perfect : r === 'close' ? COLORS.close : COLORS.wrong;
+      }
+
+      function sourceOf(id) { return timeline && timeline.sources[id]; }
+
+      function graphicOfSource(source) {
+        if (!source) return null;
+        try { return osmd.EngravingRules.GNote(source) || null; } catch (e) { return null; }
+      }
+
+      function graphicOf(id) { return graphicOfSource(sourceOf(id)); }
+
+      function occurrencesOf(source) {
+        if (!occurrences) {
+          occurrences = new Map();
+          for (var id = 1; id < timeline.sources.length; id++) {
+            var s = timeline.sources[id];
+            if (!occurrences.has(s)) occurrences.set(s, []);
+            occurrences.get(s).push(id);
+          }
+        }
+        return occurrences.get(source) || [];
+      }
+
+      // The note's own head. A chord draws all its heads in one VexFlow note,
+      // lowest first, so a chord member is picked by its rank in pitch.
+      function chordPitches(g) {
+        return ((g.parentVoiceEntry && g.parentVoiceEntry.notes) || [])
+          .map(function (n) { return n.sourceNote && n.sourceNote.halfTone; })
+          .filter(function (p) { return typeof p === 'number'; })
+          .sort(function (a, b) { return a - b; });
+      }
+
+      function headsOf(g) {
+        var heads = g.getNoteheadSVGs ? g.getNoteheadSVGs() : [];
+        if (heads.length <= 1) return heads;
+        var rank = chordPitches(g).indexOf(g.sourceNote.halfTone);
+        return rank >= 0 && heads[rank] ? [heads[rank]] : heads;
+      }
+
+      // Head, stem, flag and accidental: the parts that are this note's alone.
+      // In a chord the stem, flag and accidentals are shared, so only the head.
+      function wholeOf(g) {
+        var parts = headsOf(g).slice();
+        if (chordPitches(g).length <= 1) {
+          [g.getStemSVG && g.getStemSVG(), g.getFlagSVG && g.getFlagSVG()]
+            .concat(g.getModifierSVGs ? g.getModifierSVGs() : [])
+            .forEach(function (el) { if (el) parts.push(el); });
+        }
+        return parts;
+      }
+
+      function shapesOf(el) {
+        return [el].concat(Array.prototype.slice.call(el.querySelectorAll('*')));
+      }
+
+      // Sets an attribute, remembering what it was so it can be put back.
+      function setAttr(el, attr, value) {
+        var kept = 'data-hu-' + attr;
+        if (!el.hasAttribute(kept)) el.setAttribute(kept, el.getAttribute(attr) || '');
+        el.setAttribute(attr, value);
+      }
+
+      function restore(el) {
+        shapesOf(el).forEach(function (part) {
+          ['fill', 'stroke', 'stroke-width', 'fill-opacity'].forEach(function (attr) {
+            var kept = 'data-hu-' + attr;
+            if (!part.hasAttribute(kept)) return;
+            var original = part.getAttribute(kept);
+            if (original) part.setAttribute(attr, original); else part.removeAttribute(attr);
+            part.removeAttribute(kept);
+          });
+          part.classList && part.classList.remove('hu-flash');
+        });
+      }
+
+      function solid(el, color) {
+        shapesOf(el).forEach(function (part) {
+          if (part.getAttribute('fill') !== 'none') setAttr(part, 'fill', color);
+          var stroke = part.getAttribute('stroke');
+          if (stroke && stroke !== 'none') setAttr(part, 'stroke', color);
+        });
+      }
+
+      // An outline of the head, filled to `share` (0..1) with `color`.
+      function outlined(el, color, share) {
+        shapesOf(el).forEach(function (part) {
+          if (part.tagName === 'g') return;
+          setAttr(part, 'stroke', color);
+          setAttr(part, 'stroke-width', '1.4');
+          setAttr(part, 'fill', share > 0 ? color : 'none');
+          setAttr(part, 'fill-opacity', String(share));
+        });
+      }
+
+      function flash(els, since) {
+        var left = FLASH_MS - (Date.now() - since);
+        if (left <= 200) return;
+        els.forEach(function (el) {
+          el.classList.remove('hu-flash');
+          void el.getBoundingClientRect();
+          el.style.animationIterationCount = String(Math.max(1, Math.round(left / 500)));
+          el.classList.add('hu-flash');
+        });
+      }
+
+      // Lines up from the bottom of the staff: C D E F G A B per octave.
+      var LETTER_OF_FUNDAMENTAL = { 0: 0, 2: 1, 4: 2, 5: 3, 7: 4, 9: 5, 11: 6 };
+      var SHARP = { letter: [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6], acc: [0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0] };
+      var FLAT = { letter: [0, 1, 1, 2, 2, 3, 4, 4, 5, 5, 6, 6], acc: [0, -1, 0, -1, 0, 0, -1, 0, -1, 0, -1, 0] };
+
+      function writtenStep(source) {
+        var p = source.Pitch;
+        var letter = LETTER_OF_FUNDAMENTAL[p.FundamentalNote];
+        if (letter === undefined) return null;
+        var octave = p.Octave + 3;
+        var acc = (source.halfTone + 12) - ((octave + 1) * 12 + p.FundamentalNote);
+        return { step: octave * 7 + letter, acc: acc };
+      }
+
+      // Where a played key goes on the staff, spelled with flats when the
+      // written note is flat, otherwise with sharps.
+      function playedStep(midi, flats) {
+        var pc = ((midi % 12) + 12) % 12, table = flats ? FLAT : SHARP;
+        var octave = Math.floor(midi / 12) - 1;
+        return { step: octave * 7 + table.letter[pc], acc: table.acc[pc] };
+      }
+
+      function ghostLayer(head) {
+        var svg = head.ownerSVGElement;
+        var layer = svg.querySelector('g.hu-ghosts');
+        if (!layer) {
+          layer = document.createElementNS(NS, 'g');
+          layer.setAttribute('class', 'hu-ghosts');
+          svg.appendChild(layer);
+        }
+        return layer;
+      }
+
+      // A hollow copy of the head, `dx` along and `steps` lines up the staff.
+      function ghost(head, color, dx, steps, accidental) {
+        var box = head.getBBox();
+        var dy = -steps * box.height / 2;
+        var g = document.createElementNS(NS, 'g');
+        g.setAttribute('transform', 'translate(' + dx.toFixed(2) + ',' + dy.toFixed(2) + ')');
+        var copy = head.cloneNode(true);
+        shapesOf(copy).forEach(function (part) {
+          Array.prototype.slice.call(part.attributes || []).forEach(function (a) {
+            if (a.name.indexOf('data-hu-') === 0) part.removeAttribute(a.name);
+          });
+          if (part.tagName === 'g') return;
+          part.setAttribute('fill', 'none');
+          part.setAttribute('stroke', color);
+          part.setAttribute('stroke-width', '1.6');
+        });
+        g.appendChild(copy);
+        if (accidental) {
+          var text = document.createElementNS(NS, 'text');
+          text.textContent = accidental;
+          text.setAttribute('x', (box.x - box.width * 0.9).toFixed(2));
+          text.setAttribute('y', (box.y + box.height * 0.95).toFixed(2));
+          text.setAttribute('font-size', (box.height * 1.6).toFixed(2));
+          text.setAttribute('fill', color);
+          g.appendChild(text);
+        }
+        ghostLayer(head).appendChild(g);
+        return g;
+      }
+
+      function clearSource(source) {
+        var done = drawn.get(source);
+        if (!done) return;
+        done.parts.forEach(restore);
+        done.ghosts.forEach(function (g) { if (g.parentNode) g.parentNode.removeChild(g); });
+        drawn.delete(source);
+      }
+
+      // Draws how the note `source` went, from the marks of all its occurrences.
+      function drawSource(source, animate) {
+        clearSource(source);
+        var g = graphicOfSource(source);
+        if (!g) return;
+        var ids = occurrencesOf(source);
+        var marked = ids.filter(function (id) { return marks[id]; });
+        if (!marked.length) return;
+        var latest = marks[marked[marked.length - 1]];
+        var heads = headsOf(g), color = colorOf(latest.r);
+        var done = { parts: [], ghosts: [] };
+        drawn.set(source, done);
+
+        if (ids.length > 1) {
+          heads.forEach(function (h) { outlined(h, color, marked.length / ids.length); done.parts.push(h); });
+        } else if (latest.r === 'perfect' || latest.r === 'close' || latest.r === 'missed') {
+          wholeOf(g).forEach(function (el) { solid(el, color); done.parts.push(el); });
+          if (latest.r === 'missed' && animate) flash(done.parts, latest.at);
+        } else if (latest.r === 'early' || latest.r === 'late') {
+          heads.forEach(function (h) { outlined(h, '#1a1a1a', 0); done.parts.push(h); });
+        }
+
+        if (!heads.length) return;
+        var head = heads[0], width = head.getBBox().width;
+        var marker = null;
+        if (latest.r === 'wrong' && typeof latest.played === 'number') {
+          var written = writtenStep(source);
+          if (written) {
+            var played = playedStep(latest.played, written.acc < 0);
+            var sign = played.acc > 0 ? '♯' : played.acc < 0 ? '♭' : (written.acc !== 0 && played.step === written.step ? '♮' : '');
+            marker = ghost(head, COLORS.wrong, width * 1.35, played.step - written.step, sign);
+          }
+        } else if ((latest.r === 'early' || latest.r === 'late') && typeof latest.shift === 'number') {
+          var shift = Math.max(-1.5, Math.min(1.5, latest.shift));
+          marker = ghost(head, COLORS.wrong, shift * width * 3.2, 0, '');
+        }
+        if (marker) {
+          done.ghosts.push(marker);
+          if (animate) flash([marker], latest.at);
+        }
+      }
+
+      function groupOf(id) {
+        var g = graphicOf(id);
+        return g && g.getSVGGElement ? g.getSVGGElement() : null;
+      }
+
+      function setDue(ids) {
+        dueIds.forEach(function (id) { var el = groupOf(id); if (el) el.classList.remove('hu-due'); });
+        dueIds = ids || [];
+        dueIds.forEach(function (id) {
+          var el = groupOf(id);
+          if (el && !el.classList.contains('hu-jump')) el.classList.add('hu-due');
+        });
+      }
+
+      function jump(id) {
+        var el = groupOf(id);
+        if (!el) return;
+        el.classList.remove('hu-due', 'hu-jump');
+        void el.getBoundingClientRect();  // restart the animation
+        el.classList.add('hu-jump');
+        el.addEventListener('animationend', function done(e) {
+          if (e.target !== el) return;
+          el.classList.remove('hu-jump');
+          el.removeEventListener('animationend', done);
+        });
+      }
+
+      // Keeps the next note to play in view, unless the player has just
+      // scrolled the page themselves.
+      function keepInView() {
+        if (!following || !dueIds.length || Date.now() - lastTouch < 4000) return;
+        var el = groupOf(dueIds[0]);
+        if (!el) return;
+        var r = el.getBoundingClientRect(), h = window.innerHeight;
+        if (r.top < h * 0.12 || r.bottom > h * 0.72) {
+          window.scrollTo({ top: window.scrollY + r.top - h * 0.3, behavior: 'smooth' });
+        }
+      }
+
+      function applyLive() {
+        if (!timeline) return;
+        drawn = new Map();  // a fresh engraving: nothing of ours is on it
+        var sources = new Set();
+        Object.keys(marks).forEach(function (id) { sources.add(sourceOf(+id)); });
+        sources.forEach(function (s) { drawSource(s, false); });
+        setDue(dueIds);
+        if (spot) spotlight(spot.id);
+      }
+
+      function postTimeline() {
+        try {
+          timeline = ScoreTimeline.extract(osmd);
+          occurrences = null;
+          post('timeline', {
+            notes: timeline.notes, bpm: timeline.bpm, timeSignature: timeline.timeSignature,
+            instrument: timeline.instrument, staves: timeline.staves,
+          });
+        } catch (e) {
+          timeline = null;
+          post('timeline', { notes: [], error: String(e && e.message || e) });
+        }
+      }
+
+      // ── Tapping notes ─────────────────────────────────────────────────
+      // The notes (timeline ids) drawn at a tapped spot: those of the
+      // VexFlow note tapped, nearest head first.
+      function idsAt(target, clientY) {
+        var group = target && target.closest && target.closest('.vf-stavenote');
+        if (!group || !timeline) return [];
+        var found = [];
+        for (var id = 1; id < timeline.sources.length; id++) {
+          var g = graphicOf(id);
+          if (!g || !g.getSVGGElement || g.getSVGGElement() !== group) continue;
+          var head = headsOf(g)[0], r = head && head.getBoundingClientRect();
+          found.push({ id: id, d: r ? Math.abs((r.top + r.bottom) / 2 - clientY) : 0 });
+        }
+        found.sort(function (a, b) { return a.d - b.d || a.id - b.id; });
+        return found.map(function (f) { return f.id; });
+      }
+
+      document.addEventListener('click', function (e) {
+        if (mode !== 'off' || !loaded) return;
+        hideTip();
+        if (spot) { clearSpotlight(); return; }
+        var ids = idsAt(e.target, e.clientY);
+        if (!ids.length) return;
+        post(picking ? 'notePick' : 'noteTap', { ids: ids });
+      });
+
+      // ── Tip beside a note ─────────────────────────────────────────────
+      var tip = null;
+      function hideTip() { if (tip && tip.parentNode) tip.parentNode.removeChild(tip); tip = null; }
+
+      function showTip(id, lines) {
+        hideTip();
+        var g = graphicOf(id), head = g && headsOf(g)[0];
+        if (!head) return;
+        var r = head.getBoundingClientRect(), p = focusPoint(r.left + r.width / 2, r.top);
+        tip = document.createElement('div');
+        tip.className = 'hu-tip';
+        lines.forEach(function (line, i) {
+          var row = document.createElement('div');
+          row.textContent = line;
+          if (i > 0) row.className = 'hu-tip-more';
+          tip.appendChild(row);
+        });
+        page.appendChild(tip);
+        var w = tip.offsetWidth, maxX = page.clientWidth - w - 8;
+        tip.style.left = Math.max(8, Math.min(maxX, p.x - w / 2)) + 'px';
+        tip.style.top = Math.max(4, p.y - tip.offsetHeight - 14) + 'px';
+        var source = sourceOf(id);
+        if (marks[id]) { marks[id].at = Date.now(); drawSource(source, true); }
+      }
+
+      // ── Spotlight on one note ─────────────────────────────────────────
+      var spot = null;  // {id, el}
+      function clearSpotlight() {
+        if (spot && spot.el.parentNode) spot.el.parentNode.removeChild(spot.el);
+        spot = null;
+      }
+
+      // Drawn inside the page (page coordinates): WebKit places fixed elements
+      // off when the web view is inset. The dimmed layer covers just the
+      // screen, and follows the scroll. A tap anywhere puts it away.
+      function placeSpot() {
+        if (!spot) return;
+        var r = spot.head.getBoundingClientRect();
+        var c = focusPoint(r.left + r.width / 2, r.top + r.height / 2);
+        // The screen, with room to spare (a toolbar showing or hiding changes it).
+        var margin = 200, view = focusPoint(0, 0);
+        view = { x: view.x - margin, y: view.y - margin };
+        var radius = Math.max(28, r.height * 3);
+        var el = spot.dim;
+        el.style.left = view.x + 'px';
+        el.style.top = view.y + 'px';
+        el.style.width = (window.innerWidth + 2 * margin) + 'px';
+        el.style.height = (window.innerHeight + 2 * margin) + 'px';
+        var mask = 'radial-gradient(circle ' + radius + 'px at ' + (c.x - view.x) + 'px ' + (c.y - view.y) +
+          'px, transparent 0, transparent ' + (radius - 1) + 'px, black ' + (radius + 6) + 'px)';
+        el.style.webkitMaskImage = mask;
+        el.style.maskImage = mask;
+        spot.ring.style.left = (c.x - radius) + 'px';
+        spot.ring.style.top = (c.y - radius) + 'px';
+        spot.ring.style.width = spot.ring.style.height = (2 * radius) + 'px';
+      }
+
+      function spotlight(id) {
+        clearSpotlight();
+        var g = graphicOf(id), head = g && headsOf(g)[0];
+        if (!head) return;
+        var r0 = head.getBoundingClientRect();
+        window.scrollTo({ top: Math.max(0, window.scrollY + r0.top - window.innerHeight * 0.4), behavior: 'auto' });
+        var holder = document.createElement('div');
+        holder.className = 'hu-spot-holder';
+        var dim = document.createElement('div');
+        dim.className = 'hu-spot';
+        var ring = document.createElement('div');
+        ring.className = 'hu-spot-ring';
+        holder.appendChild(dim);
+        holder.appendChild(ring);
+        page.appendChild(holder);
+        spot = { id: id, el: holder, dim: dim, ring: ring, head: head };
+        placeSpot();
+        if (marks[id]) { marks[id].at = Date.now(); drawSource(sourceOf(id), true); }
+      }
+
+      window.addEventListener('scroll', function () { if (spot) requestAnimationFrame(placeSpot); }, { passive: true });
+
+      document.addEventListener('touchstart', function () { lastTouch = Date.now(); }, { passive: true });
+
+
       window.OSMDBridge = {
+        // update: {marks: [{id, r, played?, shift?}], cleared: [ids], due: [ids]
+        //          (omit to keep), played: [ids], follow: bool}
+        // r: 'perfect' | 'close' | 'early' | 'late' | 'wrong' | 'missed'.
+        live: function (update) {
+          if (!timeline) return;
+          var now = Date.now(), changed = new Set();
+          (update.cleared || []).forEach(function (id) { delete marks[id]; changed.add(sourceOf(id)); });
+          (update.marks || []).forEach(function (m) {
+            marks[m.id] = { r: m.r, played: m.played, shift: m.shift, at: now };
+            changed.add(sourceOf(m.id));
+          });
+          changed.forEach(function (source) { if (source) drawSource(source, true); });
+          if (typeof update.follow === 'boolean') following = update.follow;
+          if (update.due) setDue(update.due);
+          (update.played || []).forEach(jump);
+          keepInView();
+        },
+
+        // A new run: every note back as written, nothing due.
+        resetLive: function () {
+          marks = {};
+          drawn.forEach(function (_, source) { clearSource(source); });
+          drawn = new Map();
+          setDue([]);
+          hideTip();
+          clearSpotlight();
+        },
+
+        // {perfect, close, wrong}: '#rrggbb'.
+        setColors: function (colors) {
+          COLORS = { perfect: colors.perfect || COLORS.perfect, close: colors.close || COLORS.close, wrong: colors.wrong || COLORS.wrong };
+          var sources = new Set();
+          Object.keys(marks).forEach(function (id) { sources.add(sourceOf(+id)); });
+          sources.forEach(function (s) { if (s) drawSource(s, false); });
+        },
+
+        // A small note beside note `id`: lines[0] bold, the rest smaller.
+        showTip: showTip,
+        hideTip: hideTip,
+
+        // Darkens and blurs everything but note `id`, scrolled to it.
+        spotlight: spotlight,
+        clearSpotlight: clearSpotlight,
+
+        // While on, a tapped note is reported as 'notePick' (a place to start).
+        setPicking: function (on) {
+          picking = !!on;
+          document.body.classList.toggle('picking', picking);
+        },
+
+        // Zooms by `factor`, keeping the middle of the screen where it is.
+        zoomBy: function (factor) {
+          if (!loaded) return;
+          var keep = anchorAt(focusPoint(window.innerWidth / 2, window.innerHeight / 2));
+          userScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, userScale * factor));
+          fitZoom();
+          render();
+          scrollToAnchor(keep, window.innerWidth / 2, window.innerHeight / 2);
+          post('zoom', { scale: userScale });
+        },
+
         loadScore: function (xml) {
           colored = [];
           loaded = false;
           strokes = [];
           undoStack = [];
+          timeline = null;
+          occurrences = null;
+          marks = {};
+          drawn = new Map();
+          dueIds = [];
+          hideTip();
+          clearSpotlight();
           drawInk();
           osmd.load(xml)
             .then(function () {
@@ -342,6 +865,7 @@
               fitZoom();
               render();
               post('loaded');
+              postTimeline();
             })
             .catch(function (e) { post('error', { message: String(e && e.message || e) }); });
         },

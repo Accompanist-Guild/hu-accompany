@@ -25,10 +25,11 @@ class AssembledPhrase {
 
 /// Groups what Rust reports into bars.
 ///
-/// Rust sends a batch each time a note ends, and each batch holds many
-/// entries per note: one per analysis frame while it sounded, then a final
-/// "completed" one. That is far too fine-grained to judge on its own, so
-/// entries are collected per bar and a bar is released when either:
+/// Rust sends each note twice: as it starts (no end yet, for the live
+/// display) and once it has ended. Only finished notes are judged. Keys
+/// played that the score doesn't have there come with `note_id` 0 and are
+/// filed under the bar they were played in, so the backend can say which
+/// note was played instead. A bar is released when either:
 ///
 ///  * its last note completes, or
 ///  * any note of a later bar completes — the player has moved on, so a bar
@@ -39,7 +40,7 @@ class AssembledPhrase {
 class PhraseAssembler {
   PhraseAssembler(List<ExpectedNote> notes)
     : _barOf = {for (final n in notes) n.noteId: n.bar},
-      _written = notes;
+      _written = List.of(notes)..sort((a, b) => a.startMs.compareTo(b.startMs));
 
   final Map<int, int> _barOf;
   final List<ExpectedNote> _written;
@@ -74,11 +75,25 @@ class PhraseAssembler {
   }
 
   /// Files one entry under its bar. Returns the bar, or null when the entry
-  /// is not part of this exercise or its bar was already sent.
+  /// is not part of this piece, not finished, or its bar was already sent.
   int? _collect(Notes entry) {
-    final bar = _barOf[entry.noteId.toInt()];
+    if (entry.endTimeMs == null) return null;
+    final id = entry.noteId.toInt();
+    final bar = id == 0 ? _barAt(entry.startTimeMs) : _barOf[id];
     if (bar == null || _released.contains(bar)) return null;
     _pending.putIfAbsent(bar, () => []).add(entry);
+    return bar;
+  }
+
+  /// The bar of the written note sounding at [ms]: the latest to start by
+  /// then (a little early still counts as that note's bar).
+  int? _barAt(double? ms) {
+    if (ms == null || _written.isEmpty) return null;
+    var bar = _written.first.bar;
+    for (final n in _written) {
+      if (n.startMs > ms + 60) break;
+      bar = n.bar;
+    }
     return bar;
   }
 
@@ -106,18 +121,24 @@ class PhraseAssembler {
   /// Keeps one entry per note: the longest, which is the completed one when
   /// the note finished. This is the same rule the backend applies, done
   /// here so a bar is a handful of notes on the wire rather than the
-  /// hundreds of per-frame entries Rust produces.
+  /// hundreds of per-frame entries Rust produces. Stray keys (`note_id` 0)
+  /// are each their own note.
   static List<Notes> longestPerNote(List<Notes> entries) {
     final best = <int, Notes>{};
+    final strays = <Notes>[];
     for (final entry in entries) {
       final id = entry.noteId.toInt();
+      if (id == 0) {
+        strays.add(entry);
+        continue;
+      }
       final current = best[id];
       if (current == null ||
           (entry.durationMs ?? 0) > (current.durationMs ?? 0)) {
         best[id] = entry;
       }
     }
-    final result = best.values.toList()
+    final result = [...best.values, ...strays]
       ..sort((a, b) => (a.startTimeMs ?? 0).compareTo(b.startTimeMs ?? 0));
     return result;
   }

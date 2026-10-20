@@ -5,6 +5,7 @@ import 'package:hu_accomponist/integrations/scores/score_models.dart';
 import 'package:hu_accomponist/integrations/scores/score_repository.dart';
 import 'package:hu_accomponist/main.dart' show ScoreViewerPage;
 import 'package:hu_accomponist/shared/theme/Design_Tokens.dart';
+import 'package:hu_accomponist/features/shell/shell_controller.dart';
 
 /// Opening a score for practice, from wherever it was chosen.
 ///
@@ -15,18 +16,24 @@ import 'package:hu_accomponist/shared/theme/Design_Tokens.dart';
 /// snackbar. Keeping the transition in one place means a new entry point
 /// gets the same behaviour for free.
 abstract final class OpenPractice {
-  /// Replaces the current route with the score viewer.
+  /// Opens [selected] in Practice.
   ///
-  /// `pushReplacement` rather than `push` so Back from the score returns to
-  /// the turntable rather than to the picker the user already finished with.
+  /// Inside the app shell that means closing whatever was pushed over it and
+  /// showing the Practice tab with the score. Without a shell (a page under
+  /// test) it replaces the current route with the score viewer, so Back
+  /// returns to where the picker was opened from rather than to the picker.
   static Future<void> withScore(
     BuildContext context,
     LoadedScore selected,
-  ) {
-    return Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => ScoreViewerPage(selected: selected),
-      ),
+  ) async {
+    final shell = ShellScope.maybeOf(context);
+    if (shell != null) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      shell.openScore(selected);
+      return;
+    }
+    await Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => ScoreViewerPage(selected: selected)),
     );
   }
 
@@ -42,21 +49,30 @@ abstract final class OpenPractice {
   ) async {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    final shell = ShellScope.maybeOf(context);
 
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(
-        child: CircularProgressIndicator(strokeWidth: 2.5),
-      ),
+      builder: (_) =>
+          const Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
     );
 
     try {
       final loaded = await const ScoreRepository().load(
-        ScoreSummary(id: entry.id, title: entry.title, composer: entry.composer),
+        ScoreSummary(
+          id: entry.id,
+          title: entry.title,
+          composer: entry.composer,
+        ),
       );
       // Dismiss the progress dialog before routing onward.
       navigator.pop();
+      if (shell != null) {
+        navigator.popUntil((route) => route.isFirst);
+        shell.openScore(loaded);
+        return;
+      }
       await navigator.pushReplacement(
         MaterialPageRoute(builder: (_) => ScoreViewerPage(selected: loaded)),
       );
@@ -76,8 +92,6 @@ abstract final class OpenPractice {
   /// Strips Dart's "Exception: " prefix so a backend reason reads naturally.
   static String _friendly(Object e) {
     final message = e.toString();
-    return message.startsWith('Exception: ')
-        ? message.substring(11)
-        : message;
+    return message.startsWith('Exception: ') ? message.substring(11) : message;
   }
 }

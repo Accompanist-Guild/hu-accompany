@@ -79,8 +79,15 @@ Phase-1 file:
 ```
 
 - `feedback` is the unit everywhere -- phase 2 uses the same shape.
-- `bars` on a finding = the bar it happened in, numbered from the piece
+- `bars` on a finding = the bar it happened in: the bar the score prints when
+  every expected note carries `bar` (the app sends it for scores, so a pickup
+  bar or a followed tempo can't shift it), otherwise numbered from the piece
   start using `bpm` + `time_signature`; `bars` on the file = the span.
+- Alignment trusts a user note's `note_id` first (within the timing window),
+  for every note, before pairing the rest by time and pitch: an unplayed note
+  can't take its neighbour's detection, and a wrong key (no `note_id`) is
+  paired with the note it replaced, so it reads as a wrong note rather than a
+  missing one plus an extra one.
 - `box` is that same bar as a pixel rectangle on the score, so the app can
   mark the spot instead of making the player count bars. It comes from
   `pdf_processor`'s `<Piece>_bars.json`, passed in as `judge_phrase`'s

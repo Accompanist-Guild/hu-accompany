@@ -48,6 +48,10 @@ class ExpectedNote:
     pedal_action: Optional[str] = None
     has_accent: Optional[bool] = None
     markings: Optional[str] = None
+    # The bar the score prints this note in, when the client knows it (the
+    # app reads it off the score). Bars counted from time alone go wrong on a
+    # pickup bar, a metre change, or a tempo the player has been followed at.
+    bar: Optional[int] = None
 
 
 @dataclass
@@ -114,12 +118,17 @@ class PhraseContext:
     matched: List[Tuple[ExpectedNote, UserNote]]
     missing: List[ExpectedNote]
     extra: List[UserNote]
+    # (start_time_ms, bar) of every expected note, in time order, when they
+    # all carry their printed bar (see ExpectedNote.bar). Empty = count bars.
+    printed_bars: List[Tuple[float, int]] = field(default_factory=list)
 
     @property
     def beat_ms(self) -> float:
         return 60000.0 / self.bpm
 
     def bar(self, start_time_ms: float) -> int:
+        if self.printed_bars:
+            return printed_bar_at(self.printed_bars, start_time_ms)
         return bar_of(start_time_ms, self.bpm, self.beats_per_bar)
 
 
@@ -185,6 +194,30 @@ def bar_of(start_time_ms: float, bpm: float, per_bar: float) -> int:
     if bar_ms <= 0:
         return 1
     return int(start_time_ms // bar_ms) + 1
+
+
+# A played note this much before the first written note of a bar still
+# counts as that bar's (it was early, not in the previous bar).
+PRINTED_BAR_EARLY_MS = 60.0
+
+
+def printed_bars_of(expected_notes) -> List[Tuple[float, int]]:
+    """(start, printed bar) of each expected note in time order, or [] unless
+    every note carries one."""
+    if not expected_notes or any(note.bar is None for note in expected_notes):
+        return []
+    return sorted((note.start_time_ms, note.bar) for note in expected_notes)
+
+
+def printed_bar_at(printed_bars: List[Tuple[float, int]], start_time_ms: float) -> int:
+    """The printed bar of the latest written note starting at (or just after)
+    `start_time_ms`; the first note's bar for anything earlier."""
+    bar = printed_bars[0][1]
+    for start, printed in printed_bars:
+        if start > start_time_ms + PRINTED_BAR_EARLY_MS:
+            break
+        bar = printed
+    return bar
 
 
 def bar_span(bars) -> List[int]:

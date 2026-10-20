@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:hu_accomponist/integrations/server/ServerDiscovery.dart';
+import 'package:hu_accomponist/integrations/server/server_auth.dart';
 import 'package:hu_accomponist/integrations/feedback/Pull_back_phrase.dart';
 import 'package:hu_accomponist/src/rust/models.dart';
 
@@ -139,7 +140,7 @@ class PhraseUploadService {
       return await http
           .post(
             uri,
-            headers: {'Content-Type': 'application/json'},
+            headers: ServerAuth.headers({'Content-Type': 'application/json'}),
             body: body,
           )
           .timeout(_sendTimeout);
@@ -187,7 +188,9 @@ class PhraseUploadService {
     }
 
     return {
-      'note_id': note.noteId.toInt(),
+      // 0 is a key the score doesn't have there (native_ffi's stray.rs): no
+      // written note to hint at, so the backend pairs it by time and pitch.
+      if (note.noteId != BigInt.zero) 'note_id': note.noteId.toInt(),
       'pitch_hz': note.pitchHz,
       'start_time_ms': resolvedStart,
       'end_time_ms': resolvedEnd,

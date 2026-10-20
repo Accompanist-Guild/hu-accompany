@@ -5,6 +5,8 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
+import 'package:hu_accomponist/integrations/server/server_auth.dart';
+
 /// Records a hum to a WAV file. An interface so tests don't need a microphone.
 abstract class HumRecorder {
   /// Asks for the microphone if needed. False when the person said no.
@@ -98,7 +100,13 @@ class JustAudioSongPlayer implements SongPlayer {
 
   @override
   Future<void> playUrl(Uri url) async {
-    await _player.setUrl(url.toString());
+    // The player fetches a web address itself, so it has to carry the app key too, or the server refuses it. Only
+    // web addresses get it (a saved song is a file:// address), and the only ones played are the app's own server's.
+    final isWeb = url.scheme == 'http' || url.scheme == 'https';
+    await _player.setUrl(
+      url.toString(),
+      headers: isWeb ? ServerAuth.headers() : null,
+    );
     await _player.play();
   }
 

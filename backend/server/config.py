@@ -20,6 +20,9 @@ from collections.abc import Mapping
 from django.core.exceptions import ImproperlyConfigured
 
 DEV_SECRET_KEY = "dev-secret-key-change-in-production"
+DEV_SUPPORT_EMAIL = "support@hu-accompany.invalid"
+# Domains that can never be a real mailbox: a policy listing one would be published as-is.
+PLACEHOLDER_DOMAINS = (".invalid", ".example", ".test", ".localhost")
 
 # Per client, per minute. The hum routes render audio and can call paid APIs
 # (Gemini, ElevenLabs), so they get a much tighter budget than the rest.
@@ -37,12 +40,32 @@ def _number(env: Mapping[str, str], name: str, default: int) -> int:
         raise ImproperlyConfigured(f"{name} must be a whole number, got {raw!r}") from None
 
 
+def _positive_number(env: Mapping[str, str], name: str, default: float) -> float:
+    raw = env.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ImproperlyConfigured(f"{name} must be a number of hours, got {raw!r}") from None
+    if not value > 0:
+        raise ImproperlyConfigured(f"{name} must be more than zero, got {raw!r}")
+    return value
+
+
 def build_settings(env: Mapping[str, str]) -> dict:
     production = env.get("DJANGO_ENV") == "production" or bool(env.get("K_SERVICE"))
     app_key = env.get("APP_API_KEY", "")
+    # Shown on the public privacy policy, terms and support pages (server/legal.py).
+    legal = {
+        "LEGAL_PUBLISHER": env.get("LEGAL_PUBLISHER", "").strip() or "AG",
+        "HUM_TTL_HOURS": _positive_number(env, "HUM_TTL_HOURS", 3.0),  # also how long server/janitor.py keeps hums
+    }
 
     if not production:
         return {
+            **legal,
+            "SUPPORT_EMAIL": env.get("SUPPORT_EMAIL", "").strip() or DEV_SUPPORT_EMAIL,
             "IS_PRODUCTION": False,
             "DEBUG": env.get("DEBUG", "True") == "True",
             "SECRET_KEY": env.get("DJANGO_SECRET_KEY", DEV_SECRET_KEY),
@@ -66,7 +89,15 @@ def build_settings(env: Mapping[str, str]) -> dict:
     if not app_key:
         raise ImproperlyConfigured("Production needs APP_API_KEY: without it every route is open to anyone.")
 
+    support = env.get("SUPPORT_EMAIL", "").strip()
+    if "@" not in support or support.lower().endswith(PLACEHOLDER_DOMAINS):
+        raise ImproperlyConfigured(
+            "Production needs SUPPORT_EMAIL set to a real address: it is printed on the public privacy policy."
+        )
+
     return {
+        **legal,
+        "SUPPORT_EMAIL": support,
         "IS_PRODUCTION": True,
         "DEBUG": False,
         "SECRET_KEY": secret,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:hu_accomponist/features/practice/Draggable_Recorder_Button.dart';
 import 'package:hu_accomponist/features/practice/Drawing_Overlay.dart';
@@ -6,7 +8,12 @@ import 'package:hu_accomponist/features/search/Music_Library_Page.dart';
 import 'package:hu_accomponist/features/practice/score_osmd_view.dart';
 import 'package:hu_accomponist/integrations/scores/score_models.dart';
 import 'package:hu_accomponist/features/home/Vinyl_Loading_Screen.dart';
-import 'package:hu_accomponist/features/home/Record_Navigator_Page.dart';
+import 'package:hu_accomponist/features/auth/auth_gate.dart';
+import 'package:hu_accomponist/features/onboarding/onboarding_store.dart';
+import 'package:hu_accomponist/features/shell/shell_controller.dart';
+import 'package:hu_accomponist/integrations/auth/auth_controller.dart';
+import 'package:hu_accomponist/integrations/auth/auth_repository.dart';
+import 'package:hu_accomponist/integrations/auth/session_store.dart';
 import 'package:hu_accomponist/src/rust/models.dart';
 import 'package:hu_accomponist/integrations/feedback/Phrase_send2_server.dart';
 import 'package:hu_accomponist/integrations/feedback/Pull_back_phrase.dart';
@@ -16,10 +23,17 @@ import 'package:hu_accomponist/shared/theme/Design_Tokens.dart';
 import 'package:hu_accomponist/features/practice/Practice_Tool_Buttons.dart';
 import 'package:hu_accomponist/features/practice/Practice_Pen_Panel.dart';
 import 'package:hu_accomponist/features/practice/Practice_Settings_Drawer.dart';
-import 'package:hu_accomponist/features/practice/phrase_feedback_overlay.dart';
 import 'package:hu_accomponist/features/practice/Exercise_Display.dart';
 import 'package:hu_accomponist/features/practice/exercise_picker.dart';
 import 'package:hu_accomponist/features/practice/Exercise_Session.dart';
+import 'package:hu_accomponist/features/practice/live_judge.dart';
+import 'package:hu_accomponist/features/practice/play_along_guide.dart';
+import 'package:hu_accomponist/features/practice/practice_prefs.dart';
+import 'package:hu_accomponist/features/practice/practice_prefs_sheet.dart';
+import 'package:hu_accomponist/features/practice/score_practice_widgets.dart';
+import 'package:hu_accomponist/features/practice/score_practice_session.dart';
+import 'package:hu_accomponist/features/practice/score_practice_sheet.dart';
+import 'package:hu_accomponist/features/practice/score_timeline.dart';
 import 'package:hu_accomponist/integrations/audio/Rust_Bridge.dart';
 
 // Re-exported so anything that already reached for PhraseFeedback through
@@ -45,8 +59,55 @@ Future<void> main() async {
   runApp(const HuAccumponistApp());
 }
 
-class HuAccumponistApp extends StatelessWidget {
-  const HuAccumponistApp({super.key});
+class HuAccumponistApp extends StatefulWidget {
+  /// The auth state, the shell and the onboarding flag are handed in by
+  /// tests; the app builds the real ones.
+  const HuAccumponistApp({super.key, this.auth, this.shell, this.onboarding});
+
+  final AuthController? auth;
+  final ShellController? shell;
+  final OnboardingStore? onboarding;
+
+  @override
+  State<HuAccumponistApp> createState() => _HuAccumponistAppState();
+}
+
+class _HuAccumponistAppState extends State<HuAccumponistApp> {
+  late final OnboardingStore _onboarding =
+      widget.onboarding ?? const OnboardingStore();
+  late final ShellController _shell = widget.shell ?? ShellController();
+  late final AuthController _auth =
+      widget.auth ??
+      AuthController(
+        store: const SecureSessionStore(),
+        repository: const ApiAuthRepository(),
+        // A deleted account takes the tutorial flag with it, so whoever
+        // signs up next on this device is shown the tutorial.
+        onAccountDeleted: _onboarding.clear,
+      );
+
+  @override
+  void initState() {
+    super.initState();
+    _auth.addListener(_resetShellWhenSignedOut);
+    // Reads the stored session; the splash covers the wait. Until it
+    // answers, the auth gate shows nothing of its own.
+    if (_auth.status == AuthStatus.restoring) _auth.restore();
+  }
+
+  @override
+  void dispose() {
+    _auth.removeListener(_resetShellWhenSignedOut);
+    if (widget.auth == null) _auth.dispose();
+    if (widget.shell == null) _shell.dispose();
+    super.dispose();
+  }
+
+  /// The next person to sign in starts on Practice, not wherever the last
+  /// person left off.
+  void _resetShellWhenSignedOut() {
+    if (_auth.status == AuthStatus.signedOut) _shell.reset();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,12 +128,16 @@ class HuAccumponistApp extends StatelessWidget {
           },
         ),
       ),
-      // App now opens onto the vinyl spin-up splash and lands on the
-      // turntable navigator (Practice / Search / Shelf, chosen by spinning
-      // a record) instead of dropping straight into the score viewer.
-      // ScoreViewerPage is still fully intact below — it's just one of the
-      // records on the platter now (see Record_Navigator_Page.dart).
-      home: const Vinyl_Loading_Screen(child: Record_Navigator_Page()),
+      // Above the Navigator, so a page pushed over the shell (the shelf
+      // opened from the library, say) can still send the person to Practice.
+      builder: (context, child) =>
+          ShellScope(controller: _shell, child: child!),
+      // App opens onto the vinyl spin-up splash, then the auth gate: the
+      // login page when nobody is signed in, otherwise the app itself, on
+      // Practice, with the disk bar along the bottom (see AppShell).
+      home: Vinyl_Loading_Screen(
+        child: AuthGate(auth: _auth, shell: _shell, onboarding: _onboarding),
+      ),
     );
   }
 }
@@ -102,6 +167,68 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
   /// The exercise being practised, if any. While set it replaces the score,
   /// and it is what Rust listens for and the backend judges against.
   ExerciseSession? _exercise;
+
+  /// The loaded score's notes, once the score view has read them off it.
+  ScoreTimeline? _timeline;
+
+  /// How the player chose to practise this score (tempo, hands); asked the
+  /// first time they record it.
+  ScorePracticeSettings? _scoreSettings;
+
+  /// The latest run through the score. Kept after recording stops, so its
+  /// last phrases can still come back and mark their notes.
+  ScorePracticeSession? _scoreSession;
+
+  final RecorderController _recorder = RecorderController();
+
+  /// Listening is stopped part-way through a run (the recorder's Pause).
+  bool _paused = false;
+
+  /// A tapped note is taken as the place to start from.
+  bool _picking = false;
+
+  /// Where the next run starts (null: the beginning), chosen beforehand.
+  int? _startFromId;
+
+  /// Where to go on from after a pause, picked on the score.
+  int? _resumeFromId;
+
+  bool get _listening => _isRecording && !_paused;
+
+  /// The play-along guide's step on screen, or null.
+  int? _guideStep;
+  bool _guideChecked = false;
+  final _recorderKey = GlobalKey();
+  final _scoreKey = GlobalKey();
+  final _settingsKey = GlobalKey();
+  final _helpKey = GlobalKey();
+
+  late final Map<GuideTarget, GlobalKey> _guideTargets = {
+    GuideTarget.recorder: _recorderKey,
+    GuideTarget.score: _scoreKey,
+    GuideTarget.settings: _settingsKey,
+    GuideTarget.help: _helpKey,
+  };
+
+  /// The first time a score is ready to play along with, the guide starts.
+  Future<void> _maybeStartGuide() async {
+    if (_guideChecked || !_scoreReady) return;
+    _guideChecked = true;
+    if (await const PlayAlongGuideStore().hasSeen()) return;
+    if (mounted && !_isRecording) setState(() => _guideStep = 0);
+  }
+
+  void _endGuide() {
+    const PlayAlongGuideStore().setSeen();
+    setState(() => _guideStep = null);
+  }
+
+  void _openHelp() => PlayAlongHelpSheet.show(
+    context,
+    onReplayGuide: () {
+      if (mounted && !_isRecording) setState(() => _guideStep = 0);
+    },
+  );
   final DrawingController _drawing = DrawingController();
 
   /// Call this from the Flutter-Rust-Bridge performance-result callback.
@@ -121,10 +248,16 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
 
   void _onRecordingChanged(bool isRecording) {
     if (mounted) {
-      setState(() => _isRecording = isRecording);
+      setState(() {
+        _isRecording = isRecording;
+        _paused = false;
+      });
     }
     if (!isRecording) {
       _exercise?.finish();
+      _stopPicking();
+      final session = _scoreSession;
+      if (session != null) _finishScore(session);
     }
     if (isRecording) {
       // A fresh recording gets a fresh session — the backend assigns the
@@ -185,6 +318,11 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
       exercise.onRustBatch(notes);
       return;
     }
+    final scoreSession = _scoreSession;
+    if (scoreSession != null) {
+      scoreSession.onRustBatch(notes);
+      return;
+    }
 
     if (_expectedNotes.isEmpty) {
       debugPrint(
@@ -229,6 +367,10 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
   LoadedScore? _score;
   bool get _hasScore => _score != null;
 
+  /// A score is showing whose notes can be played along with.
+  bool get _scoreReady =>
+      _exercise == null && _hasScore && !(_timeline?.isEmpty ?? true);
+
   // Kept as a stable field so picking another score reloads the same
   // WebView instead of rebuilding it.
   final ScoreOsmdController _osmd = ScoreOsmdController();
@@ -243,6 +385,13 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
   // Swaps in a new score, or clears it if [selected] is null.
   void _setScore(LoadedScore? selected) {
     if (selected != null) _endExercise();
+    _endScoreSession();
+    _timeline = null;
+    _scoreSettings = null;
+    _startFromId = null;
+    _resumeFromId = null;
+    _picking = false;
+    _guideChecked = false;
     _score = selected;
     _osmd.setInk('[]'); // until this score's own ink is read
     if (selected != null) _loadInk(selected.summary.id);
@@ -286,6 +435,7 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
     if (choice == null || !mounted) return;
     setState(() {
       _endExercise();
+      _endScoreSession();
       _exercise = ExerciseSession(
         exercise: choice.exercise,
         bpm: choice.bpm,
@@ -302,23 +452,217 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
     _exercise = null;
   }
 
+  void _endScoreSession() {
+    _scoreSession?.dispose();
+    _scoreSession = null;
+  }
+
+  // ── Playing along with a score ─────────────────────────────────────
+
+  ScorePracticeSettings _defaultSettings(ScoreTimeline timeline) =>
+      ScorePracticeSettings(bpm: timeline.bpm.roundToDouble());
+
+  /// Tempo and hands for this score. Returns null if the player backed out.
+  Future<ScorePracticeSettings?> _chooseSettings({
+    required String action,
+  }) async {
+    final timeline = _timeline;
+    if (timeline == null) return null;
+    final chosen = await ScorePracticeSheet.show(
+      context,
+      title: _piece.title,
+      timeline: timeline,
+      current: _scoreSettings ?? _defaultSettings(timeline),
+      action: action,
+    );
+    if (chosen != null && mounted) {
+      setState(() {
+        // Another hand may not have the note the run was to start from.
+        if (chosen.hands != _scoreSettings?.hands) _startFromId = null;
+        _scoreSettings = chosen;
+      });
+    }
+    return chosen;
+  }
+
+  /// Loads the score into Rust and counts the player in. False to cancel.
+  Future<bool> _prepareScore() async {
+    final timeline = _timeline;
+    if (timeline == null) {
+      _say('The score is still loading.');
+      return false;
+    }
+    if (timeline.isEmpty) {
+      _say("This score has no notes the app can follow.");
+      return false;
+    }
+    final settings =
+        _scoreSettings ?? await _chooseSettings(action: 'Start playing');
+    if (settings == null || !mounted) return false;
+
+    _endScoreSession();
+    final session = ScorePracticeSession(
+      piece: _piece,
+      timeline: timeline,
+      settings: settings,
+      strictness: PracticePrefs.instance.strictness,
+      onLive: _onScoreLive,
+      onReport: _onExerciseReport,
+    );
+    setState(() {
+      _scoreSession = session;
+      _paused = false;
+      _resumeFromId = null;
+    });
+    _stopPicking();
+    _osmd.resetLive();
+    _osmd.setColors(PracticePrefs.instance.colors);
+    final error = await session.prepare(from: _startFromId);
+    if (error != null && error != 'cancelled') _say(error);
+    return error == null;
+  }
+
+  /// Going on after a pause: from the note picked, or the next one due.
+  Future<bool> _resumeScore() async {
+    final session = _scoreSession;
+    if (session == null) return false;
+    _stopPicking();
+    final from = _resumeFromId;
+    _resumeFromId = null;
+    final error = from == null
+        ? await session.resume()
+        : await session.prepare(from: from);
+    if (error != null && error != 'cancelled') _say(error);
+    if (error == null && mounted) setState(() => _paused = false);
+    return error == null;
+  }
+
+  /// The recorder's swiped-out buttons (see [RecorderAction]).
+  Future<bool> _onRecorderAction(RecorderAction action) async {
+    final session = _scoreSession;
+    if (session == null) return false;
+    await session.stopListening();
+    if (!mounted) return false;
+    switch (action) {
+      case RecorderAction.pause:
+        setState(() => _paused = true);
+        return false;
+      case RecorderAction.fromNote:
+        setState(() => _paused = true);
+        _startPicking();
+        return false;
+      case RecorderAction.restart:
+        setState(() => _paused = false);
+        final error = await session.prepare(from: _startFromId);
+        if (error != null && error != 'cancelled') _say(error);
+        return error == null;
+    }
+  }
+
+  void _startPicking() {
+    _osmd.setPicking(true);
+    if (mounted) setState(() => _picking = true);
+  }
+
+  void _stopPicking() {
+    if (!_picking) return;
+    _osmd.setPicking(false);
+    if (mounted) setState(() => _picking = false);
+  }
+
+  /// Before a run, from the drawer: tap where the next run starts.
+  void _chooseStart() {
+    if (_timeline == null || _timeline!.isEmpty) return;
+    _startPicking();
+  }
+
+  /// A note tapped while picking where to start. A repeated note is played
+  /// more than once: before a run, its first time; after a pause, the time
+  /// at or just before where the player had got to.
+  void _onNotePick(List<int> ids) {
+    if (!_picking) return;
+    final timeline = _timeline;
+    if (timeline == null) return;
+    final settings = _scoreSettings ?? _defaultSettings(timeline);
+    final playable = {
+      for (final n in timeline.layout(bpm: settings.bpm, hands: settings.hands))
+        n.noteId: n.startMs,
+    };
+    final candidates = ids.where(playable.containsKey).toList()
+      ..sort((a, b) => playable[a]!.compareTo(playable[b]!));
+    if (candidates.isEmpty) {
+      _say("That note isn't in the hands you're playing.");
+      return;
+    }
+    final session = _scoreSession;
+    if (session != null && _paused) {
+      final next = session.judge.next;
+      final reached = next == null
+          ? double.infinity
+          : session.judge.note(next)!.startMs;
+      final before = candidates.where((id) => playable[id]! <= reached);
+      _resumeFromId = before.isEmpty ? candidates.first : before.last;
+      _stopPicking();
+      _recorder.resume();
+      return;
+    }
+    setState(() => _startFromId = candidates.first);
+    _stopPicking();
+  }
+
+  /// A note tapped while not playing: what happened to it, beside it.
+  void _onNoteTap(List<int> ids) {
+    final session = _scoreSession;
+    if (session == null || _listening || _picking) return;
+    final marked = ids.where(session.judge.marks.containsKey).toList();
+    if (marked.isEmpty) return;
+    final id = marked.reduce((a, b) => a > b ? a : b);
+    final note = session.judge.note(id)!;
+    final verdict = session.judge.marks[id]!;
+    _osmd.showTip(id, [
+      '${verdict.describe(note)} · bar ${LiveJudge.bar(note)}',
+      ?ScoreSummarySheet.tipFor(session, id),
+    ]);
+  }
+
+  /// The run is over: once its last phrases are judged, the summary.
+  Future<void> _finishScore(ScorePracticeSession session) async {
+    await session.finish();
+    if (!mounted || !identical(session, _scoreSession)) return;
+    final id = await ScoreSummarySheet.show(context, session);
+    if (id != null && mounted) _osmd.spotlight(id);
+  }
+
+  void _onScoreLive(LiveUpdate update) {
+    if (!mounted) return;
+    _osmd.live(update, follow: _listening);
+  }
+
+  void _onPrefsChanged() => _osmd.setColors(PracticePrefs.instance.colors);
+
+  /// The bar a note is printed in, for the banners.
+  int? _barOf(int? id) {
+    if (id == null) return null;
+    for (final n in _timeline?.notes ?? const <TimelineNote>[]) {
+      if (n.id == id) return n.measureNumber < 1 ? 1 : n.measureNumber;
+    }
+    return null;
+  }
+
   void _onExerciseReport(PhraseReport report) {
     if (!mounted) return;
     setState(() => _latestReport = report);
     setPhraseFeedback(PhraseFeedback.forScore(report.scores.overall));
   }
 
-  /// Runs between the mic tap and the microphone opening. Recording is
-  /// refused without an exercise: Rust only listens for the notes of a
-  /// loaded piece, and nothing derives those notes from a score's MusicXML
-  /// yet, so a score alone gives Rust nothing to listen for.
+  /// Runs between the mic tap and the microphone opening: loads what Rust
+  /// is to listen for (the exercise, or the score's notes) and counts the
+  /// player in.
   Future<bool> _beforeCapture() async {
     final exercise = _exercise;
     if (exercise == null) {
-      _say(
-        'Pick an exercise first. Following along with a score is not '
-        'supported yet.',
-      );
+      if (_hasScore) return _prepareScore();
+      _say('Pick a score or an exercise first.');
       return false;
     }
     final error = await exercise.prepare();
@@ -334,8 +678,22 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
   }
 
   @override
+  void didUpdateWidget(ScoreViewerPage old) {
+    super.didUpdateWidget(old);
+    // The shell keeps this page alive and hands it a new score when one is
+    // picked from Search or the Shelf. Each pick is a freshly loaded score,
+    // so identity tells a new pick from a rebuild.
+    final picked = widget.selected;
+    if (picked != null && !identical(picked, old.selected)) {
+      setState(() => _setScore(picked));
+    }
+  }
+
+  @override
   void dispose() {
     _exercise?.dispose();
+    _scoreSession?.dispose();
+    PracticePrefs.instance.removeListener(_onPrefsChanged);
     _drawing.dispose();
     _osmd.canUndoInk.dispose();
     super.dispose();
@@ -348,6 +706,15 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
       final id = _score?.summary.id;
       if (id != null) _inkStore.save(id, strokes);
     };
+    _osmd.onTimeline = (timeline) {
+      if (mounted) setState(() => _timeline = timeline);
+      _osmd.setColors(PracticePrefs.instance.colors);
+      _maybeStartGuide();
+    };
+    _osmd.onNoteTap = _onNoteTap;
+    _osmd.onNotePick = _onNotePick;
+    PracticePrefs.instance.addListener(_onPrefsChanged);
+    PracticePrefs.instance.load();
     _setScore(widget.selected);
   }
 
@@ -402,6 +769,22 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
           Navigator.pop(context);
           _openExercisePicker();
         },
+        onPlayAlong: _scoreReady && !_isRecording
+            ? () {
+                Navigator.pop(context);
+                _chooseSettings(action: 'Done');
+              }
+            : null,
+        onStartFrom: _scoreReady && !_isRecording
+            ? () {
+                Navigator.pop(context);
+                _chooseStart();
+              }
+            : null,
+        onNoteSettings: () {
+          Navigator.pop(context);
+          PracticePrefsSheet.show(context);
+        },
       ),
       body: SafeArea(
         child: Stack(
@@ -433,11 +816,16 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
                 // uses nearly the whole width. Turned sideways (as many
                 // players hold a phone on a stand), they move to the sides
                 // and the score gets nearly the whole height.
-                padding:
-                    MediaQuery.orientationOf(context) == Orientation.landscape
-                    ? const EdgeInsets.fromLTRB(76, Space.xs, 76, Space.xs)
-                    : const EdgeInsets.fromLTRB(Space.sm, 72, Space.sm, 82),
+                padding: _landscape(context)
+                    ? const EdgeInsets.fromLTRB(76, Space.xxs, 76, Space.xxs)
+                    : EdgeInsets.fromLTRB(
+                        Space.sm,
+                        70,
+                        Space.sm,
+                        InShellPage.of(context) ? Space.sm : 76,
+                      ),
                 child: Container(
+                  key: _scoreKey,
                   decoration: BoxDecoration(
                     color: PracticePalette.paper,
                     borderRadius: Radii.cardRadius,
@@ -522,6 +910,59 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
                           ),
                         ),
                       ),
+
+                      // Count-in before playing along with a score.
+                      if (_scoreSession != null)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: ScoreCountIn(session: _scoreSession!),
+                          ),
+                        ),
+
+                      // The latest phrase's verdict, one thin line.
+                      Positioned(
+                        top: Space.xs,
+                        left: Space.sm,
+                        right: Space.sm,
+                        child: IgnorePointer(
+                          child: Center(
+                            child: PhraseStrip(report: _latestReport),
+                          ),
+                        ),
+                      ),
+
+                      // Picking a note to start from, or where the next run starts.
+                      if (_picking || (_startFromId != null && !_isRecording))
+                        Positioned(
+                          top: 40,
+                          left: 0,
+                          right: 0,
+                          child: Center(
+                            child: _picking
+                                ? ScoreBanner(
+                                    icon: Icons.ads_click_rounded,
+                                    text: 'Tap the note to start from',
+                                    onClose: _stopPicking,
+                                  )
+                                : ScoreBanner(
+                                    icon: Icons.flag_rounded,
+                                    text:
+                                        'Starts at bar ${_barOf(_startFromId)}',
+                                    onClose: () =>
+                                        setState(() => _startFromId = null),
+                                  ),
+                          ),
+                        ),
+
+                      if (_exercise == null && _hasScore)
+                        Positioned(
+                          right: Space.sm,
+                          bottom: Space.sm,
+                          child: ZoomButtons(
+                            onZoomIn: () => _osmd.zoomBy(1.2),
+                            onZoomOut: () => _osmd.zoomBy(1 / 1.2),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -548,11 +989,39 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
             Positioned(
               top: 16,
               left: 22,
-              child: PracticeToolButton(
-                icon: Icons.tune_rounded,
-                active: false,
-                color: PracticePalette.gold,
-                onTap: () => _scaffoldKey.currentState?.openDrawer(),
+              child: Flex(
+                // Upright, along the top; sideways, down the left edge.
+                direction: _landscape(context)
+                    ? Axis.vertical
+                    : Axis.horizontal,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  PracticeToolButton(
+                    key: _settingsKey,
+                    icon: Icons.tune_rounded,
+                    active: false,
+                    color: PracticePalette.gold,
+                    onTap: () => _scaffoldKey.currentState?.openDrawer(),
+                  ),
+                  const SizedBox(width: Space.xs, height: Space.xs),
+                  PracticeToolButton(
+                    icon: Icons.search_rounded,
+                    active: false,
+                    color: PracticePalette.gold,
+                    onTap: _goToNavPage,
+                  ),
+                  // The colour key and the guide, once there is a score.
+                  if (_exercise == null && _hasScore) ...[
+                    const SizedBox(width: Space.xs, height: Space.xs),
+                    PracticeToolButton(
+                      key: _helpKey,
+                      icon: Icons.question_mark_rounded,
+                      active: false,
+                      color: PracticePalette.gold,
+                      onTap: _openHelp,
+                    ),
+                  ],
+                ],
               ),
             ),
 
@@ -562,7 +1031,11 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
             Positioned(
               top: 16,
               right: 22,
-              child: Row(
+              child: Flex(
+                direction: _landscape(context)
+                    ? Axis.vertical
+                    : Axis.horizontal,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   PracticeToolButton(
                     icon: Icons.edit_outlined,
@@ -577,7 +1050,7 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
                       });
                     },
                   ),
-                  const SizedBox(width: Space.xs),
+                  const SizedBox(width: Space.xs, height: Space.xs),
                   AnimatedBuilder(
                     animation: Listenable.merge([_drawing, _osmd.canUndoInk]),
                     builder: (_, _) => PracticeToolButton(
@@ -590,7 +1063,7 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
                       onTap: _inkOnScore ? _osmd.undoInk : _drawing.undo,
                     ),
                   ),
-                  const SizedBox(width: Space.xs),
+                  const SizedBox(width: Space.xs, height: Space.xs),
                   PracticeToolButton(
                     icon: Icons.palette_outlined,
                     active: _showPenSettings,
@@ -609,8 +1082,8 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
             // PEN SETTINGS
             // ─────────────────────────────────────────────
             Positioned(
-              top: 68,
-              right: 22,
+              top: _landscape(context) ? 16 : 68,
+              right: _landscape(context) ? 76 : 22,
               // Scales and fades out of the palette button rather than
               // appearing outright, so it reads as belonging to the
               // control that opened it.
@@ -657,52 +1130,51 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
             // recording pipeline; it reports UI toggle state here and, per
             // phrase, hands the notes off for upload + feedback polling.
             Draggable_Recorder_Button(
+              key: _recorderKey,
               onToggle: _onRecordingChanged,
               onPhrase: _onPhraseReceived,
               onBeforeCapture: _beforeCapture,
               onError: _say,
               accent: PracticeSettingsDrawer.feedbackColor(_feedback),
+              controller: _recorder,
+              actionsEnabled: _exercise == null && _scoreSession != null,
+              onAction: _onRecorderAction,
+              onBeforeResume: _resumeScore,
             ),
 
             // ─────────────────────────────────────────────
-            // PHRASE FEEDBACK
+            // EXIT (only when pushed; inside the shell there is no "back")
             // ─────────────────────────────────────────────
-            Positioned(
-              right: Space.lg,
-              bottom: 76,
-              child: PhraseFeedbackOverlay(report: _latestReport),
-            ),
-
-            // ─────────────────────────────────────────────
-            // SEARCH
-            // ─────────────────────────────────────────────
-            Positioned(
-              left: 22,
-              bottom: 20,
-              child: PracticeBottomButton(
-                icon: Icons.search_rounded,
-                color: PracticePalette.mutedBrown,
-                onTap: _goToNavPage,
+            if (!InShellPage.of(context))
+              Positioned(
+                right: 22,
+                bottom: 20,
+                child: PracticeBottomButton(
+                  icon: Icons.arrow_back_rounded,
+                  color: PracticePalette.mutedBrown,
+                  onTap: () => Navigator.of(context).maybePop(),
+                ),
               ),
-            ),
 
-            // ─────────────────────────────────────────────
-            // EXIT
-            // ─────────────────────────────────────────────
-            Positioned(
-              right: 22,
-              bottom: 20,
-              child: PracticeBottomButton(
-                icon: Icons.arrow_back_rounded,
-                color: PracticePalette.mutedBrown,
-                onTap: () => Navigator.of(context).maybePop(),
+            // The play-along guide, over everything.
+            if (_guideStep != null)
+              Positioned.fill(
+                child: PlayAlongGuideOverlay(
+                  step: _guideStep!,
+                  targets: _guideTargets,
+                  onNext: () => setState(() => _guideStep = _guideStep! + 1),
+                  onBack: () => setState(() => _guideStep = _guideStep! - 1),
+                  onDone: _endGuide,
+                ),
               ),
-            ),
           ],
         ),
       ),
     );
   }
+
+  static bool _landscape(BuildContext context) =>
+      MediaQuery.orientationOf(context) == Orientation.landscape;
 
   static Widget _ornamentRule() => Container(
     width: 38,

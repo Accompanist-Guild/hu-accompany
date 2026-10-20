@@ -56,9 +56,12 @@ def phrase_feedback_view(request):
              used to number bars)},
            "expected_notes": [ {note_id, pitch_hz, start_time_ms,
              end_time_ms, duration_ms, vibrato_depth, pedal_action,
-             has_accent, markings}, ... ],
+             has_accent, markings, bar (optional: the bar number the score
+             prints; when every note has one, findings use it instead of
+             counting bars from the time)}, ... ],
            "user_notes": [ {note_id, pitch_hz, start_time_ms, end_time_ms,
-             duration_ms, has_accent}, ... ],
+             duration_ms, has_accent}, ... ] (note_id optional: a key played
+             that isn't written has none, and is paired by time and pitch),
            "bar_boxes": [ {bar, page, x, y, w, h, page_size}, ... ]
              (optional -- the piece's <Piece>_bars.json, written by
              pdf_processor; each finding then also carries `box`, the pixel

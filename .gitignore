@@ -121,3 +121,4 @@ backend/mxl.tar
 backend/hum_data/
 # Soundfonts used to render songs (large; copy them in by hand, see backend/hum/README.md)
 *.sf2
+backend/.wrangler/

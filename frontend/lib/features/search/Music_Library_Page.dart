@@ -8,6 +8,7 @@ import 'package:hu_accomponist/features/search/library_controller.dart';
 import 'package:hu_accomponist/integrations/scores/score_models.dart';
 import 'package:hu_accomponist/shared/theme/Design_Tokens.dart';
 import 'package:hu_accomponist/features/shelf/Shelf_Page.dart';
+import 'package:hu_accomponist/features/shell/shell_controller.dart';
 
 // Styling lives in Library_Browse.dart so the page and its browse
 // components can't drift apart.
@@ -62,11 +63,19 @@ class _Music_Library_PageState extends State<Music_Library_Page> {
     _library.reset();
   }
 
-  // Loads the tapped score, then closes the library and hands it to
+  // Loads the tapped score, then hands it on. Inside the app shell this
+  // page is a tab, so the score goes to Practice; pushed as a route (from
+  // Practice's own search button) it closes and returns the score to
   // whoever opened it via the pop result.
   Future<void> _openScore(ScoreSummary score) async {
     final loaded = await _library.open(score);
-    if (loaded != null && mounted) Navigator.pop(context, loaded);
+    if (loaded == null || !mounted) return;
+    final shell = InShellPage.of(context) ? ShellScope.maybeOf(context) : null;
+    if (shell != null) {
+      shell.openScore(loaded);
+    } else {
+      Navigator.pop(context, loaded);
+    }
   }
 
   @override

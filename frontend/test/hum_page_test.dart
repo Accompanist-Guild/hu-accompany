@@ -33,11 +33,15 @@ void main() {
 
   tearDown(() => controller.dispose());
 
+  // Talk mode is off in a default build; these tests are about the page with it on (talk_mode_flag_test.dart
+  // covers it off).
   Future<void> show(WidgetTester tester) async {
     tester.view.physicalSize = const Size(900, 4800);
     tester.view.devicePixelRatio = 2;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(MaterialApp(home: HumPage(controller: controller)));
+    await tester.pumpWidget(
+      MaterialApp(home: HumPage(controller: controller, talkMode: true)),
+    );
   }
 
   /// Lets the fakes answer, then draws the result.
@@ -296,7 +300,9 @@ void main() {
     tester.view.physicalSize = const Size(750, 5200); // 375 points wide
     tester.view.devicePixelRatio = 2;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(MaterialApp(home: HumPage(controller: controller)));
+    await tester.pumpWidget(
+      MaterialApp(home: HumPage(controller: controller, talkMode: true)),
+    );
     await hum(tester);
 
     await tester.tap(find.text('Epic'));

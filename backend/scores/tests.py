@@ -82,6 +82,7 @@ class ImportCommandTests(TestCase):
             ("Missing", "Bach", "./mxl/0/1/missing.mxl", 4.6, 1),
             ("No composer", "NA", "./mxl/0/1/nc.mxl", 4.9, 1),
             ("Low rated", "Bach", "./mxl/0/1/low.mxl", 1.0, 1),
+            ("Modern", "Toby Fox", "./mxl/0/1/modern.mxl", 4.9, 1),
         ]
         with sqlite3.connect(self.catalog) as conn:
             conn.execute(
@@ -94,15 +95,23 @@ class ImportCommandTests(TestCase):
         write_mxl(self.root / "mxl/0/1/good.mxl", SCORE_XML)
         write_mxl(self.root / "mxl/0/1/copy.mxl", SCORE_XML)
         write_mxl(self.root / "mxl/0/1/broken.mxl", b"<score-partwise")
+        # a valid score that is NOT cleared: if the importer ever read it, it would be imported
+        write_mxl(self.root / "mxl/0/1/modern.mxl", SCORE_XML + b"<!-- a different score -->")
+        self.clearance = self.root / "cleared_mxl.txt"
+        self.clearance.write_text(
+            "# test list\n"
+            + "".join(f"mxl/0/1/{name}.mxl\n" for name in ("good", "copy", "broken", "missing", "nc", "low"))
+        )
 
     def tearDown(self):
         shutil.rmtree(self.root, ignore_errors=True)
 
-    def run_import(self):
+    def run_import(self, **options):
         out = StringIO()
+        options.setdefault("clearance", self.clearance)
         with override_settings(STORAGE_ROOT=self.storage):
             call_command(
-                "import_pdmx", pdmx_root=self.root, catalog=self.catalog, stdout=out
+                "import_pdmx", pdmx_root=self.root, catalog=self.catalog, stdout=out, **options
             )
         return out.getvalue()
 
@@ -127,6 +136,85 @@ class ImportCommandTests(TestCase):
         self.run_import()
         self.assertIn("already imported: 1", self.run_import())
         self.assertEqual(Score.objects.count(), 1)
+
+    def test_a_score_that_is_not_cleared_is_never_imported_or_even_read(self):
+        output = self.run_import()
+
+        self.assertFalse(Score.objects.filter(title="Modern").exists())
+        self.assertFalse((self.storage / "musicxml/modern.musicxml").exists())
+        self.assertIn("not cleared for copyright: 1", output)
+        # it is a policy skip, not a problem to investigate, so it stays out of the problem report
+        report = json.loads((self.storage / "musicxml/import_report.json").read_text())
+        self.assertNotIn("Modern", {entry["title"] for entry in report})
+
+    def test_it_refuses_to_run_without_a_clearance_list_and_touches_nothing(self):
+        from django.core.management.base import CommandError
+
+        with self.assertRaisesMessage(CommandError, "build_clearance"):
+            self.run_import(clearance=self.root / "nope.txt")
+        self.assertEqual(Score.objects.count(), 0)
+        self.assertFalse(self.storage.exists())
+
+    def test_an_empty_clearance_list_does_not_mean_allow_everything(self):
+        from django.core.management.base import CommandError
+
+        self.clearance.write_text("# nothing cleared\n")
+        with self.assertRaisesMessage(CommandError, "empty"):
+            self.run_import()
+        self.assertEqual(Score.objects.count(), 0)
+
+
+class PruneUnclearedTests(TestCase):
+    """Scores imported before the clearance existed (or after the rules tightened) must be removable."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="prune-test-"))
+        self.storage = self.root / "storage"
+        (self.storage / "musicxml").mkdir(parents=True)
+        self.clearance = self.root / "cleared_mxl.txt"
+        self.clearance.write_text("mxl/0/1/keep.mxl\n")
+        for name in ("keep", "drop"):
+            (self.storage / f"musicxml/{name}.musicxml").write_bytes(b"<x/>")
+            Score.objects.create(
+                title=name, composer="C", rating=4.5, pdmx_path=f"mxl/0/1/{name}.mxl",
+                musicxml_path=f"musicxml/{name}.musicxml", sha256=name * 16 + "0" * (64 - len(name) * 16),
+                part_count=1, measure_count=1,
+            )
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def prune(self, *flags, **options):
+        out = StringIO()
+        with override_settings(STORAGE_ROOT=self.storage):
+            call_command("prune_uncleared", *flags, clearance=self.clearance, stdout=out, **options)
+        return out.getvalue()
+
+    def test_by_default_it_only_reports(self):
+        output = self.prune()
+        self.assertIn("would remove: 1", output)
+        self.assertEqual(Score.objects.count(), 2)
+        self.assertTrue((self.storage / "musicxml/drop.musicxml").exists())
+
+    def test_with_yes_it_removes_the_rows_and_their_files_but_not_cleared_ones(self):
+        output = self.prune("--yes")
+        self.assertIn("removed: 1", output)
+        self.assertEqual(list(Score.objects.values_list("title", flat=True)), ["keep"])
+        self.assertFalse((self.storage / "musicxml/drop.musicxml").exists())
+        self.assertTrue((self.storage / "musicxml/keep.musicxml").exists())
+
+    def test_it_can_list_the_bucket_files_to_delete_by_hand(self):
+        keys = self.root / "keys.txt"
+        self.prune("--yes", keys_file=keys)
+        self.assertEqual(keys.read_text().split(), ["musicxml/drop.musicxml"])
+
+    def test_it_refuses_without_a_clearance_list(self):
+        from django.core.management.base import CommandError
+
+        self.clearance.unlink()
+        with self.assertRaisesMessage(CommandError, "build_clearance"):
+            self.prune("--yes")
+        self.assertEqual(Score.objects.count(), 2)
 
 
 class ScoreViewTests(TestCase):

@@ -6,11 +6,13 @@
 from django.urls import path, include
 from django.conf import settings
 from django.urls import re_path
-from server import views
+from server import legal, views
 
 urlpatterns = [
     path("", include("api.urls")),
     path("", include("scores.urls")),
     path("", include("hum.urls")),
+    path("", include("User_accounts.urls")),
     re_path(r'^storage/(?P<path>.*)$', views.storage),
+    *[re_path(rf'^{name}/?$', legal.page_view(name)) for name in legal.TITLES],
 ]

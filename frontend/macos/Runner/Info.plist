@@ -30,6 +30,8 @@
 	<string>NSApplication</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>This app discovers the accompaniment server on your local network.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Hu Accomponist listens to your instrument to give you practice feedback, to your humming to turn it into a song, and to your voice when you talk to it to change a song.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_huaccompany._tcp</string>

@@ -1,0 +1,42 @@
+name: CI
+
+# Checks the Flutter app on every push to main and every pull request. The release workflow calls this one first,
+# so a tag can never publish a build that fails its tests.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flutter:
+    # macOS because that is where these tests have been run and where the app ships.
+    runs-on: macos-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          # Pinned: a newer Flutter re-resolves packages and can raise the macOS deployment target on its own.
+          flutter-version: 3.47.2
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      # --no-fatal-infos: the code has ~70 style hints (file names, doc comments) that are not bugs. Errors and
+      # warnings still fail the build.
+      - run: flutter analyze --no-fatal-infos
+
+      - run: flutter test

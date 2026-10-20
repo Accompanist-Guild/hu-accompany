@@ -47,6 +47,7 @@ class ChatController extends ChangeNotifier {
     required ChatHost host,
     HumRecorder? recorder,
     SongPlayer? voice,
+    this.ensureConsent,
     this.maxListen = const Duration(seconds: 12),
   }) : _repository = repository,
        _host = host,
@@ -61,6 +62,11 @@ class ChatController extends ChangeNotifier {
   final SongPlayer _voice;
   final Duration maxListen;
 
+  /// Asks the person whether Talk mode may send their requests to the AI
+  /// services, unless they already said yes. Null means nothing to ask
+  /// (tests, or a build without those services).
+  final Future<bool> Function()? ensureConsent;
+
   final List<ChatEntry> entries = [];
   ChatVoice state = ChatVoice.idle;
 
@@ -73,8 +79,32 @@ class ChatController extends ChangeNotifier {
   bool _playSongAfterVoice = false;
   int _turn = 0;
   bool _disposed = false;
+  bool _asking = false;
 
   bool get busy => state == ChatVoice.thinking;
+
+  /// True if the request may go ahead. If not, nothing has been sent and the
+  /// microphone has not started; the person is told why.
+  Future<bool> _mayShare() async {
+    final ask = ensureConsent;
+    if (ask == null) return true;
+    if (_asking) return false; // a question is already open: ignore the extra tap
+    _asking = true;
+    try {
+      if (await ask()) return true;
+    } on Object {
+      // Nowhere to ask, or it failed: count it as a no, never as a yes.
+    } finally {
+      _asking = false;
+    }
+    if (!_disposed) {
+      addNotice(
+        'Talk mode needs your OK to share requests with the AI services. '
+        'Try again when you are ready.',
+      );
+    }
+    return false;
+  }
 
   /// A line from the app itself, e.g. that it switched engines.
   void addNotice(String text) {
@@ -92,6 +122,7 @@ class ChatController extends ChangeNotifier {
   Future<void> send(String text) async {
     final words = text.trim();
     if (words.isEmpty || busy || state == ChatVoice.listening) return;
+    if (!await _mayShare()) return;
     await _stopSpeaking();
     entries.add(ChatEntry(ChatSpeaker.user, words));
     await _ask(
@@ -112,6 +143,7 @@ class ChatController extends ChangeNotifier {
   Future<void> tapMic() async {
     if (state == ChatVoice.listening) return stopListening();
     if (busy) return;
+    if (!await _mayShare()) return;
     await _stopSpeaking();
     try {
       if (!await _recorder.requestPermission()) {
@@ -207,9 +239,9 @@ class ChatController extends ChangeNotifier {
           await _host.applyChatEdit(reply.project!, reply.label);
           return true;
         case 'undo':
-          return _host.undoEdit();
+          return await _host.undoEdit();
         case 'redo':
-          return _host.redoEdit();
+          return await _host.redoEdit();
       }
     } on Exception catch (e) {
       entries.add(

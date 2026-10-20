@@ -5,6 +5,7 @@ pub mod dsp;
 pub mod joint;
 pub mod models;
 pub mod run_onnx;
+pub mod stray;
 pub mod templates;
 pub mod tracker;
 pub mod volume;
@@ -244,7 +245,8 @@ mod lifecycle_tests {
     }
 
     fn notes_in_user_data() -> Vec<u64> {
-        lock(&USER_DATA).iter().flatten().map(|n| n.note_id).collect()
+        // Finished records only: each note is also sent once as it starts.
+        lock(&USER_DATA).iter().flatten().filter(|n| n.end_time_ms.is_some()).map(|n| n.note_id).collect()
     }
 
     #[test]
@@ -344,8 +346,12 @@ mod lifecycle_tests {
         worker.join().unwrap();
 
         let records: Vec<Notes> = lock(&USER_DATA).clone().unwrap_or_default();
-        assert_eq!(records.iter().map(|n| n.note_id).collect::<Vec<_>>(), vec![9602], "{records:?}");
-        assert_eq!(records[0].start_time_ms, Some(0.0), "the new piece's clock starts at its own first note");
+        let finished: Vec<&Notes> = records.iter().filter(|n| n.end_time_ms.is_some()).collect();
+        assert_eq!(finished.iter().map(|n| n.note_id).collect::<Vec<_>>(), vec![9602], "{records:?}");
+        assert_eq!(finished[0].start_time_ms, Some(0.0), "the new piece's clock starts at its own first note");
+        // ...and it was announced as it started, in the same clock.
+        let started: Vec<&Notes> = records.iter().filter(|n| n.end_time_ms.is_none()).collect();
+        assert_eq!(started.iter().map(|n| (n.note_id, n.start_time_ms)).collect::<Vec<_>>(), vec![(9602, Some(0.0))]);
         *lock(&ACTIVE_PIECE) = None;
         *lock(&USER_DATA) = None;
     }
