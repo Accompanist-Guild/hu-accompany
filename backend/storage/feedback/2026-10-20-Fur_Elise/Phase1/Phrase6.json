@@ -1,0 +1,199 @@
+{
+  "piece": {
+    "title": "Fur Elise",
+    "composer": "Ludwig van Beethoven(17701827)",
+    "composed_date": ""
+  },
+  "recorded_at": "2026-10-20T22:54:40.760921+00:00",
+  "phrase": 6,
+  "bpm": 32.0,
+  "time_signature": "3/8",
+  "bars": [
+    3,
+    4
+  ],
+  "scores": {
+    "overall": 90,
+    "pitch": 100,
+    "rhythm": 68,
+    "tempo": 100,
+    "dynamics": 94,
+    "articulation": null,
+    "notes": null,
+    "pedaling": null
+  },
+  "feedback": [
+    {
+      "bars": 3,
+      "category": "rhythm",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "This note was cut short compared to what's written.",
+      "details": {
+        "note_id": 70,
+        "issue": "duration",
+        "diff_ms": -860.7,
+        "pct": 0.918,
+        "direction": "too_short",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 3,
+      "category": "rhythm",
+      "severity": "minor",
+      "confidence": 0.54,
+      "message": "This note was cut short compared to what's written.",
+      "details": {
+        "note_id": 73,
+        "issue": "duration",
+        "diff_ms": -90.0,
+        "pct": 0.192,
+        "direction": "too_short",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 3,
+      "category": "rhythm",
+      "severity": "minor",
+      "confidence": 0.62,
+      "message": "This note was held longer than written.",
+      "details": {
+        "note_id": 74,
+        "issue": "duration",
+        "diff_ms": 132.6,
+        "pct": 0.283,
+        "direction": "too_long",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 3,
+      "category": "rhythm",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "This note was cut short compared to what's written.",
+      "details": {
+        "note_id": 75,
+        "issue": "duration",
+        "diff_ms": -422.3,
+        "pct": 0.901,
+        "direction": "too_short",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 3,
+      "category": "dynamics",
+      "severity": "minor",
+      "confidence": 0.58,
+      "message": "This note stood out louder than the notes around it.",
+      "details": {
+        "note_id": 70,
+        "issue": "evenness",
+        "direction": "louder",
+        "change_db": 8.0,
+        "suggestion": "Play this passage slowly at one steady volume, listening for any note that pokes out."
+      },
+      "box": null
+    },
+    {
+      "bars": 3,
+      "category": "notes",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "An extra note was played that isn't in the score.",
+      "details": {
+        "note_id": null,
+        "issue": "extra_note",
+        "user_hz": 195.99771799087463,
+        "user_note": "G3",
+        "suggestion": "Review the written notes here closely and avoid adding notes that aren't written."
+      },
+      "box": null
+    },
+    {
+      "bars": 3,
+      "category": "notes",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "An extra note was played that isn't in the score.",
+      "details": {
+        "note_id": null,
+        "issue": "extra_note",
+        "user_hz": 207.65234878997256,
+        "user_note": "G#3",
+        "suggestion": "Review the written notes here closely and avoid adding notes that aren't written."
+      },
+      "box": null
+    },
+    {
+      "bars": 3,
+      "category": "notes",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "An extra note was played that isn't in the score.",
+      "details": {
+        "note_id": null,
+        "issue": "extra_note",
+        "user_hz": 195.99771799087463,
+        "user_note": "G3",
+        "suggestion": "Review the written notes here closely and avoid adding notes that aren't written."
+      },
+      "box": null
+    },
+    {
+      "bars": 4,
+      "category": "rhythm",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "This note was cut short compared to what's written.",
+      "details": {
+        "note_id": 77,
+        "issue": "duration",
+        "diff_ms": -722.8,
+        "pct": 0.771,
+        "direction": "too_short",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 4,
+      "category": "rhythm",
+      "severity": "major",
+      "confidence": 0.95,
+      "message": "This note was cut short compared to what's written.",
+      "details": {
+        "note_id": 81,
+        "issue": "duration",
+        "diff_ms": -302.6,
+        "pct": 0.646,
+        "direction": "too_short",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 4,
+      "category": "rhythm",
+      "severity": "major",
+      "confidence": 0.98,
+      "message": "This note was cut short compared to what's written.",
+      "details": {
+        "note_id": 82,
+        "issue": "duration",
+        "diff_ms": -315.6,
+        "pct": 0.673,
+        "direction": "too_short",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    }
+  ]
+}

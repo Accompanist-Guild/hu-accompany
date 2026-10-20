@@ -1,0 +1,120 @@
+{
+  "piece": {
+    "title": "Fur Elise",
+    "composer": "Ludwig van Beethoven(17701827)",
+    "composed_date": ""
+  },
+  "recorded_at": "2026-10-19T22:16:14.511946+00:00",
+  "phrase": 10,
+  "bpm": 32.0,
+  "time_signature": "3/8",
+  "bars": [
+    12,
+    13
+  ],
+  "scores": {
+    "overall": 95,
+    "pitch": 100,
+    "rhythm": 85,
+    "tempo": 100,
+    "dynamics": 99,
+    "articulation": null,
+    "notes": null,
+    "pedaling": null
+  },
+  "feedback": [
+    {
+      "bars": 12,
+      "category": "rhythm",
+      "severity": "minor",
+      "confidence": 0.51,
+      "message": "This note came in late, disrupting the rhythm.",
+      "details": {
+        "note_id": 128,
+        "issue": "onset",
+        "diff_ms": 204.4,
+        "direction": "late",
+        "suggestion": "Practice this passage with a metronome, focusing on landing the note exactly on the beat."
+      },
+      "box": null
+    },
+    {
+      "bars": 12,
+      "category": "rhythm",
+      "severity": "minor",
+      "confidence": 0.67,
+      "message": "This note was cut short compared to what's written.",
+      "details": {
+        "note_id": 128,
+        "issue": "duration",
+        "diff_ms": -160.4,
+        "pct": 0.342,
+        "direction": "too_short",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 13,
+      "category": "rhythm",
+      "severity": "minor",
+      "confidence": 0.59,
+      "message": "This note was cut short compared to what's written.",
+      "details": {
+        "note_id": 132,
+        "issue": "duration",
+        "diff_ms": -233.7,
+        "pct": 0.249,
+        "direction": "too_short",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 13,
+      "category": "rhythm",
+      "severity": "major",
+      "confidence": 0.78,
+      "message": "This note came in late, disrupting the rhythm.",
+      "details": {
+        "note_id": 136,
+        "issue": "onset",
+        "diff_ms": 609.3,
+        "direction": "late",
+        "suggestion": "Practice this passage with a metronome, focusing on landing the note exactly on the beat."
+      },
+      "box": null
+    },
+    {
+      "bars": 13,
+      "category": "rhythm",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "This note was held longer than written.",
+      "details": {
+        "note_id": 136,
+        "issue": "duration",
+        "diff_ms": 328.1,
+        "pct": 0.7,
+        "direction": "too_long",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 13,
+      "category": "notes",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "An extra note was played that isn't in the score.",
+      "details": {
+        "note_id": null,
+        "issue": "extra_note",
+        "user_hz": 739.9888454232688,
+        "user_note": "F#5",
+        "suggestion": "Review the written notes here closely and avoid adding notes that aren't written."
+      },
+      "box": null
+    }
+  ]
+}

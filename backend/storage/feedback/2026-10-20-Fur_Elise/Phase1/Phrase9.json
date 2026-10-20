@@ -1,0 +1,243 @@
+{
+  "piece": {
+    "title": "Fur Elise",
+    "composer": "Ludwig van Beethoven(17701827)",
+    "composed_date": ""
+  },
+  "recorded_at": "2026-10-20T22:54:53.766947+00:00",
+  "phrase": 9,
+  "bpm": 32.0,
+  "time_signature": "3/8",
+  "bars": [
+    10,
+    11
+  ],
+  "scores": {
+    "overall": 54,
+    "pitch": 50,
+    "rhythm": 32,
+    "tempo": 76,
+    "dynamics": 79,
+    "articulation": null,
+    "notes": null,
+    "pedaling": null
+  },
+  "feedback": [
+    {
+      "bars": 10,
+      "category": "pitch",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "Wrong note \u2014 you played B2 instead of E5.",
+      "details": {
+        "note_id": 111,
+        "cents": -2900.0,
+        "expected_hz": 659.2551138257398,
+        "user_hz": 123.47082531403103,
+        "expected_note": "E5",
+        "user_note": "B2",
+        "suggestion": "Practice this transition slowly and focus on the correct note."
+      },
+      "box": null
+    },
+    {
+      "bars": 10,
+      "category": "rhythm",
+      "severity": "major",
+      "confidence": 0.93,
+      "message": "This note came in late, disrupting the rhythm.",
+      "details": {
+        "note_id": 111,
+        "issue": "onset",
+        "diff_ms": 836.7,
+        "direction": "late",
+        "suggestion": "Practice this passage with a metronome, focusing on landing the note exactly on the beat."
+      },
+      "box": null
+    },
+    {
+      "bars": 10,
+      "category": "rhythm",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "This note was cut short compared to what's written.",
+      "details": {
+        "note_id": 111,
+        "issue": "duration",
+        "diff_ms": -1220.4,
+        "pct": 0.868,
+        "direction": "too_short",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 10,
+      "category": "rhythm",
+      "severity": "minor",
+      "confidence": 0.54,
+      "message": "This note was held longer than written.",
+      "details": {
+        "note_id": 114,
+        "issue": "duration",
+        "diff_ms": 89.3,
+        "pct": 0.19,
+        "direction": "too_long",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 10,
+      "category": "rhythm",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "This note was cut short compared to what's written.",
+      "details": {
+        "note_id": 115,
+        "issue": "duration",
+        "diff_ms": -387.5,
+        "pct": 0.827,
+        "direction": "too_short",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 10,
+      "category": "tempo",
+      "severity": "minor",
+      "confidence": 0.62,
+      "message": "The tempo gradually rushes across the phrase.",
+      "details": {
+        "drift_ms": -366.6,
+        "direction": "rushing",
+        "through_bar": 11,
+        "suggestion": "Practice the phrase with a metronome, paying close attention to keeping a steady tempo through to the end."
+      },
+      "box": null
+    },
+    {
+      "bars": 10,
+      "category": "notes",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "This note was not played.",
+      "details": {
+        "note_id": 116,
+        "issue": "missing_note",
+        "expected_hz": 659.2551138257398,
+        "expected_note": "E5",
+        "suggestion": "Go through this passage slowly, note-by-note, to make sure this note is included."
+      },
+      "box": null
+    },
+    {
+      "bars": 10,
+      "category": "notes",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "An extra note was played that isn't in the score.",
+      "details": {
+        "note_id": 111,
+        "issue": "extra_note",
+        "user_hz": 655.0118615932226,
+        "user_note": "E5",
+        "suggestion": "Review the written notes here closely and avoid adding notes that aren't written."
+      },
+      "box": null
+    },
+    {
+      "bars": 10,
+      "category": "notes",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "An extra note was played that isn't in the score.",
+      "details": {
+        "note_id": null,
+        "issue": "extra_note",
+        "user_hz": 130.8127826502993,
+        "user_note": "C3",
+        "suggestion": "Review the written notes here closely and avoid adding notes that aren't written."
+      },
+      "box": null
+    },
+    {
+      "bars": 11,
+      "category": "rhythm",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "This note was cut short compared to what's written.",
+      "details": {
+        "note_id": 118,
+        "issue": "duration",
+        "diff_ms": -1260.8,
+        "pct": 0.896,
+        "direction": "too_short",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 11,
+      "category": "rhythm",
+      "severity": "major",
+      "confidence": 0.95,
+      "message": "This note was cut short compared to what's written.",
+      "details": {
+        "note_id": 122,
+        "issue": "duration",
+        "diff_ms": -303.6,
+        "pct": 0.648,
+        "direction": "too_short",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 11,
+      "category": "dynamics",
+      "severity": "major",
+      "confidence": 0.72,
+      "message": "This note dropped noticeably softer than the notes around it.",
+      "details": {
+        "note_id": 122,
+        "issue": "evenness",
+        "direction": "softer",
+        "change_db": -11.3,
+        "suggestion": "Play this passage slowly at one steady volume, making sure this note speaks as fully as its neighbours."
+      },
+      "box": null
+    },
+    {
+      "bars": 11,
+      "category": "notes",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "This note was not played.",
+      "details": {
+        "note_id": 121,
+        "issue": "missing_note",
+        "expected_hz": 349.2282314330039,
+        "expected_note": "F4",
+        "suggestion": "Go through this passage slowly, note-by-note, to make sure this note is included."
+      },
+      "box": null
+    },
+    {
+      "bars": 11,
+      "category": "notes",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "This note was not played.",
+      "details": {
+        "note_id": 123,
+        "issue": "missing_note",
+        "expected_hz": 587.3295358348151,
+        "expected_note": "D5",
+        "suggestion": "Go through this passage slowly, note-by-note, to make sure this note is included."
+      },
+      "box": null
+    }
+  ]
+}

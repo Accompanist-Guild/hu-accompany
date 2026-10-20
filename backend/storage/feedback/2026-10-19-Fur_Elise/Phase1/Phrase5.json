@@ -1,0 +1,169 @@
+{
+  "piece": {
+    "title": "Fur Elise",
+    "composer": "Ludwig van Beethoven(17701827)",
+    "composed_date": ""
+  },
+  "recorded_at": "2026-10-19T22:15:54.017401+00:00",
+  "phrase": 5,
+  "bpm": 32.0,
+  "time_signature": "3/8",
+  "bars": [
+    1,
+    2
+  ],
+  "scores": {
+    "overall": 84,
+    "pitch": 83,
+    "rhythm": 71,
+    "tempo": 100,
+    "dynamics": 89,
+    "articulation": null,
+    "notes": null,
+    "pedaling": null
+  },
+  "feedback": [
+    {
+      "bars": 1,
+      "category": "pitch",
+      "severity": "minor",
+      "confidence": 0.53,
+      "message": "This note was played slightly sharp.",
+      "details": {
+        "note_id": 55,
+        "cents": 29.8,
+        "expected_hz": 622.2539674441618,
+        "user_hz": 633.0525563698399,
+        "expected_note": "D#5",
+        "user_note": "D#5",
+        "suggestion": "Practice this transition slowly and focus on the correct note."
+      },
+      "box": null
+    },
+    {
+      "bars": 1,
+      "category": "pitch",
+      "severity": "minor",
+      "confidence": 0.53,
+      "message": "This note was played slightly sharp.",
+      "details": {
+        "note_id": 57,
+        "cents": 29.6,
+        "expected_hz": 622.2539674441618,
+        "user_hz": 633.0008862184329,
+        "expected_note": "D#5",
+        "user_note": "D#5",
+        "suggestion": "Practice this transition slowly and focus on the correct note."
+      },
+      "box": null
+    },
+    {
+      "bars": 1,
+      "category": "rhythm",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "This note was held longer than written.",
+      "details": {
+        "note_id": 54,
+        "issue": "duration",
+        "diff_ms": 451.9,
+        "pct": 0.964,
+        "direction": "too_long",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 1,
+      "category": "rhythm",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "This note was held longer than written.",
+      "details": {
+        "note_id": 57,
+        "issue": "duration",
+        "diff_ms": 514.5,
+        "pct": 1.098,
+        "direction": "too_long",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 1,
+      "category": "dynamics",
+      "severity": "minor",
+      "confidence": 0.51,
+      "message": "This note dropped noticeably softer than the notes around it.",
+      "details": {
+        "note_id": 61,
+        "issue": "evenness",
+        "direction": "softer",
+        "change_db": -6.2,
+        "suggestion": "Play this passage slowly at one steady volume, making sure this note speaks as fully as its neighbours."
+      },
+      "box": null
+    },
+    {
+      "bars": 1,
+      "category": "notes",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "This note was not played.",
+      "details": {
+        "note_id": 58,
+        "issue": "missing_note",
+        "expected_hz": 659.2551138257398,
+        "expected_note": "E5",
+        "suggestion": "Go through this passage slowly, note-by-note, to make sure this note is included."
+      },
+      "box": null
+    },
+    {
+      "bars": 2,
+      "category": "rhythm",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "This note was held longer than written.",
+      "details": {
+        "note_id": 66,
+        "issue": "duration",
+        "diff_ms": 381.8,
+        "pct": 0.815,
+        "direction": "too_long",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 2,
+      "category": "dynamics",
+      "severity": "major",
+      "confidence": 0.68,
+      "message": "This note stood out louder than the notes around it.",
+      "details": {
+        "note_id": 63,
+        "issue": "evenness",
+        "direction": "louder",
+        "change_db": 10.4,
+        "suggestion": "Play this passage slowly at one steady volume, listening for any note that pokes out."
+      },
+      "box": null
+    },
+    {
+      "bars": 2,
+      "category": "notes",
+      "severity": "major",
+      "confidence": 1.0,
+      "message": "This note was not played.",
+      "details": {
+        "note_id": 67,
+        "issue": "missing_note",
+        "expected_hz": 329.6275569128699,
+        "expected_note": "E4",
+        "suggestion": "Go through this passage slowly, note-by-note, to make sure this note is included."
+      },
+      "box": null
+    }
+  ]
+}

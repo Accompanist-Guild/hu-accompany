@@ -1,0 +1,74 @@
+{
+  "piece": {
+    "title": "Fur Elise",
+    "composer": "Ludwig van Beethoven(17701827)",
+    "composed_date": ""
+  },
+  "recorded_at": "2026-10-19T22:16:06.162788+00:00",
+  "phrase": 8,
+  "bpm": 32.0,
+  "time_signature": "3/8",
+  "bars": [
+    7,
+    9
+  ],
+  "scores": {
+    "overall": 99,
+    "pitch": 100,
+    "rhythm": 98,
+    "tempo": 100,
+    "dynamics": 96,
+    "articulation": null,
+    "notes": null,
+    "pedaling": null
+  },
+  "feedback": [
+    {
+      "bars": 7,
+      "category": "rhythm",
+      "severity": "minor",
+      "confidence": 0.62,
+      "message": "This note was cut short compared to what's written.",
+      "details": {
+        "note_id": 97,
+        "issue": "duration",
+        "diff_ms": -265.8,
+        "pct": 0.284,
+        "direction": "too_short",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 7,
+      "category": "rhythm",
+      "severity": "minor",
+      "confidence": 0.54,
+      "message": "This note was held longer than written.",
+      "details": {
+        "note_id": 100,
+        "issue": "duration",
+        "diff_ms": 88.4,
+        "pct": 0.189,
+        "direction": "too_long",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 9,
+      "category": "dynamics",
+      "severity": "minor",
+      "confidence": 0.53,
+      "message": "This note stood out louder than the notes around it.",
+      "details": {
+        "note_id": 104,
+        "issue": "evenness",
+        "direction": "louder",
+        "change_db": 6.7,
+        "suggestion": "Play this passage slowly at one steady volume, listening for any note that pokes out."
+      },
+      "box": null
+    }
+  ]
+}

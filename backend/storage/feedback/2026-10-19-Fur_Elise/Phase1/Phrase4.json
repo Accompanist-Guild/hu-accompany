@@ -1,0 +1,58 @@
+{
+  "piece": {
+    "title": "Fur Elise",
+    "composer": "Ludwig van Beethoven(17701827)",
+    "composed_date": ""
+  },
+  "recorded_at": "2026-10-19T22:15:48.890751+00:00",
+  "phrase": 4,
+  "bpm": 32.0,
+  "time_signature": "3/8",
+  "bars": [
+    7,
+    8
+  ],
+  "scores": {
+    "overall": 98,
+    "pitch": 100,
+    "rhythm": 98,
+    "tempo": 100,
+    "dynamics": 91,
+    "articulation": null,
+    "notes": null,
+    "pedaling": null
+  },
+  "feedback": [
+    {
+      "bars": 7,
+      "category": "rhythm",
+      "severity": "minor",
+      "confidence": 0.62,
+      "message": "This note was cut short compared to what's written.",
+      "details": {
+        "note_id": 44,
+        "issue": "duration",
+        "diff_ms": -266.6,
+        "pct": 0.284,
+        "direction": "too_short",
+        "suggestion": "Slow down and count out this note's full written duration before returning to full tempo."
+      },
+      "box": null
+    },
+    {
+      "bars": 8,
+      "category": "dynamics",
+      "severity": "minor",
+      "confidence": 0.57,
+      "message": "This note stood out louder than the notes around it.",
+      "details": {
+        "note_id": 51,
+        "issue": "evenness",
+        "direction": "louder",
+        "change_db": 7.6,
+        "suggestion": "Play this passage slowly at one steady volume, listening for any note that pokes out."
+      },
+      "box": null
+    }
+  ]
+}
