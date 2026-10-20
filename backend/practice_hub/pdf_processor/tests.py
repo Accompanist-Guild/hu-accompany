@@ -2,7 +2,7 @@
 `python manage.py test` won't auto-discover this file. Run explicitly:
 
     cd backend
-    python manage.py test pdf_processor.tests
+    python manage.py test practice_hub.pdf_processor.tests
 
 Only the parts that are pure geometry are covered here -- running oemer
 itself needs a real page and a couple of minutes.

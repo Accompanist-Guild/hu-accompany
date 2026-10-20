@@ -42,7 +42,7 @@ directly instead.)
 
 **Run from the command line**
 ```bash
-backend/.venv/bin/python3 backend/pdf_processor/pdf_to_notes.py "<path/to/score.pdf>"
+backend/.venv/bin/python3 backend/practice_hub/pdf_processor/pdf_to_notes.py "<path/to/score.pdf>"
 ```
 
 **Or call it from other Python code**

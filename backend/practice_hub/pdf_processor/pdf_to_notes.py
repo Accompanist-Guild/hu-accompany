@@ -10,7 +10,7 @@ import sys
 import time
 import multiprocessing
 from pathlib import Path
-from image_enhancer.enhancer_script import enhance_music_pdf
+from practice_hub.image_enhancer.enhancer_script import enhance_music_pdf
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "image_enhancer"))

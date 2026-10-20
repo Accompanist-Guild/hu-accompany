@@ -6,7 +6,7 @@ import 'package:hu_accomponist/integrations/server/ServerDiscovery.dart';
 import 'package:hu_accomponist/integrations/feedback/Pull_back_phrase.dart';
 import 'package:hu_accomponist/src/rust/models.dart';
 
-/// Sends one phrase to backend/feedback_generator's phase-1 endpoint.
+/// Sends one phrase to backend/practice_hub/feedback_generator's phase-1 endpoint.
 ///
 /// Unlike the placeholder version of this file, POST /api/feedback/phrase
 /// is synchronous — the backend judges the phrase and returns its full

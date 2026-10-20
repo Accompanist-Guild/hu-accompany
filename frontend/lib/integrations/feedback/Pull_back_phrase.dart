@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 
 import 'package:hu_accomponist/integrations/server/ServerDiscovery.dart';
 
-/// Models + fetch logic for backend/feedback_generator's two endpoints:
+/// Models + fetch logic for backend/practice_hub/feedback_generator's two endpoints:
 ///   - POST /api/feedback/phrase  -> PhraseReport (see Phrase_Send2_Server.dart,
 ///     which sends the request; this file just owns the response shape)
 ///   - POST /api/feedback/summary -> the phase-2, whole-session summary

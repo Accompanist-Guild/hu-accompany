@@ -110,7 +110,7 @@ Phase-1 file:
 ## 3. Quick test
 
 ```
-python manage.py test feedback_generator.tests api.tests -v 2
+python manage.py test practice_hub.feedback_generator.tests api.tests -v 2
 ```
 
 - 77 tests, no server needed.
@@ -180,7 +180,7 @@ curl -s -X POST http://127.0.0.1:8000/api/feedback/summary \
 
 ```
 python -c "
-from feedback_generator.judges.phase2.era import parse_composed_year, detect_era, adjacent_era
+from practice_hub.feedback_generator.judges.phase2.era import parse_composed_year, detect_era, adjacent_era
 for d in [1722, '1810', 'ca. 1785', '1830s', '1802-1804', '18th century', None, 'unknown']:
     y = parse_composed_year(d); e = detect_era(d); a = adjacent_era(y)
     print(repr(d), '->', y, e.label if e else None, '| adjacent:', a.label if a else None)

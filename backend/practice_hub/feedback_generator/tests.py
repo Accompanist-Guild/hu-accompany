@@ -2,7 +2,7 @@
 `python manage.py test` won't auto-discover this file. Run explicitly:
 
     cd backend
-    python manage.py test feedback_generator.tests
+    python manage.py test practice_hub.feedback_generator.tests
 """
 
 import shutil

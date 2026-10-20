@@ -8,7 +8,7 @@ import 'package:hu_accomponist/features/practice/Practice_Settings_Drawer.dart';
 
 /// Compact result card shown after each analyzed phrase.
 ///
-/// Reads the phase-1 shape documented in backend/feedback_generator's
+/// Reads the phase-1 shape documented in backend/practice_hub/feedback_generator's
 /// README: an `overall` 0-100 plus per-dimension scores that may be null,
 /// and a `feedback` list of findings carrying category, severity and a
 /// message.

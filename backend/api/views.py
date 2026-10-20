@@ -5,9 +5,9 @@ from django.conf import settings
 from django.http import JsonResponse, HttpRequest
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from feedback_generator import judge_phrase, judge_piece
-from feedback_generator import store as feedback_store
-from feedback_generator.errors import InvalidNoteData, InvalidSessionId, StorageFailed
+from practice_hub.feedback_generator import judge_phrase, judge_piece
+from practice_hub.feedback_generator import store as feedback_store
+from practice_hub.feedback_generator.errors import InvalidNoteData, InvalidSessionId, StorageFailed
 
 
 @csrf_exempt

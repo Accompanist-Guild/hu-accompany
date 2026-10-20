@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from feedback_generator import judge_phrase  # noqa: E402 -- needs backend/ on sys.path
+from practice_hub.feedback_generator import judge_phrase  # noqa: E402 -- needs backend/ on sys.path
 
 
 def user_note_to_json(note: dict) -> dict:

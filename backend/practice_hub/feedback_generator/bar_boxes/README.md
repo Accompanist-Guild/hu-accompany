@@ -35,7 +35,7 @@ feedback_generator/
 ## 3. Quick test
 
 ```
-python manage.py test feedback_generator.bar_boxes.tests -v 2
+python manage.py test practice_hub.feedback_generator.bar_boxes.tests -v 2
 ```
 
 - 7 tests, no server needed, nothing written to disk.

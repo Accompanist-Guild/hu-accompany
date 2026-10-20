@@ -12,17 +12,19 @@ Django backend for hu-accompany.
 
 - **`hum/`** — Django app ported from the ECKO Flask backend: a user hums a tune and gets back a generated song, reshapeable by typing or speaking. HTTP layer (`views.py`, `talk_views.py`, `urls.py`) over the framework-free `engine/` (audio intake, the epic/simple arrangement engines, and Gemini/ElevenLabs talk mode). See `hum/README.md`.
 
-- **`imslp_search/`** — IMSLP domain logic: search, parsing, normalization, error types, and the score lookup code (`main.py`, `search.py`, `parser.py`, `normalizer.py`, `models.py`, `errors.py`).
+- **`practice_hub/`** — Package grouping the practice pipeline modules below (IMSLP search/download, PDF/OMR processing, scan enhancement, performance feedback). Import them as `practice_hub.<module>`; `imslp_downloader` keeps its Django app label so its tables/migrations are unchanged.
 
-  - **`imslp_search/services/`** — Service-layer glue that connects the `imslp_search` logic to the `api` app's models.
+- **`practice_hub/imslp_search/`** — IMSLP domain logic: search, parsing, normalization, error types, and the score lookup code (`main.py`, `search.py`, `parser.py`, `normalizer.py`, `models.py`, `errors.py`).
 
-- **`imslp_downloader/`** — Django app that downloads scores from IMSLP (browser automation through the disclaimer/subscribe flow), with its own `management/` commands and `migrations/`.
+  - **`practice_hub/imslp_search/services/`** — Service-layer glue that connects the `imslp_search` logic to the `api` app's models.
 
-- **`pdf_processor/`** — The oemer ML-based OMR pipeline: `part1_notes/` (PDF → PNG → MusicXML → timed notes) and `part2_markings/` (OCR of composer markings), driven by the `pdf_to_notes.py` entry point. See `pdf_processor/README.md`.
+- **`practice_hub/imslp_downloader/`** — Django app that downloads scores from IMSLP (browser automation through the disclaimer/subscribe flow), with its own `management/` commands and `migrations/`.
 
-- **`image_enhancer/`** — Standalone libvips-based script (`enhancer_script.py`) that cleans and sharpens scanned score PDFs page by page before OMR.
+- **`practice_hub/pdf_processor/`** — The oemer ML-based OMR pipeline: `part1_notes/` (PDF → PNG → MusicXML → timed notes) and `part2_markings/` (OCR of composer markings), driven by the `pdf_to_notes.py` entry point. See `practice_hub/pdf_processor/README.md`.
 
-- **`feedback_generator/`** — Two-phase performance feedback: phase 1 judges one phrase at a time, phase 2 summarizes the session. Judges in `judges/`, score-highlight boxes in `bar_boxes/`, storage glue in `store.py`/`summarizer.py`. See `feedback_generator/README.md`.
+- **`practice_hub/image_enhancer/`** — Standalone libvips-based script (`enhancer_script.py`) that cleans and sharpens scanned score PDFs page by page before OMR.
+
+- **`practice_hub/feedback_generator/`** — Two-phase performance feedback: phase 1 judges one phrase at a time, phase 2 summarizes the session. Judges in `judges/`, score-highlight boxes in `bar_boxes/`, storage glue in `store.py`/`summarizer.py`. See `practice_hub/feedback_generator/README.md`.
 
 - **`quiz/`** — Framework-light music theory/history quiz generator driven by a typed topic heading; hand-written question `banks/`, topic parsing, and category-balanced draw with thin Django views. See `quiz/README.md`.
 

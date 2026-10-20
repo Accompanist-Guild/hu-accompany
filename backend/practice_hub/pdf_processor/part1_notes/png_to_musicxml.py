@@ -69,7 +69,7 @@ from oemer import layers
 from oemer.ete import extract, clear_data
 import oemer.draw_teaser as _draw_teaser
 
-from feedback_generator.bar_boxes import bar_boxes
+from practice_hub.feedback_generator.bar_boxes import bar_boxes
 
 ACCIDENTAL_COLOR = (255, 0, 255)  # magenta
 DOT_COLOR = (0, 255, 255)  # cyan

@@ -2,7 +2,7 @@
 `python manage.py test` won't auto-discover this file. Run explicitly:
 
     cd backend
-    python manage.py test feedback_generator.bar_boxes.tests
+    python manage.py test practice_hub.feedback_generator.bar_boxes.tests
 
 Only pure geometry is covered here -- running oemer itself needs a real
 page and a couple of minutes.

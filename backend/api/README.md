@@ -9,7 +9,7 @@ CSRF-exempt; request/response bodies are JSON.
 | POST | `/developer/chat/` | `api.views.chat_view` |
 | POST | `/developer/api/search` | `api.views.search_view` |
 | POST | `/api/imslp/search` | `api.views.imslp_search_view` |
-| POST | `/api/imslp/download` | `imslp_downloader.api.download_view` |
+| POST | `/api/imslp/download` | `practice_hub.imslp_downloader.api.download_view` |
 | POST | `/api/score/process` | `api.views.process_score_view` |
 | POST | `/api/score/process-omr` | `api.views.process_score_omr_view` |
 
@@ -60,7 +60,7 @@ score.
 **Errors:** 400 missing file_path / invalid JSON, 404 file not found, 500 processing error.
 
 ## POST `/api/score/process-omr`
-Convert a stored score PDF into notes JSON using `backend/pdf_processor`
+Convert a stored score PDF into notes JSON using `backend/practice_hub/pdf_processor`
 (the oemer ML-based OMR pipeline): splits the PDF into per-page PNGs,
 runs OMR to MusicXML with a debug PNG per page (every detected
 notehead/clef/barline/etc. boxed and labeled), then parses timed note
@@ -85,4 +85,4 @@ events. All output files are written next to the source PDF in storage.
 
 Note: this and `/api/score/process` are two independent OMR pipelines
 (ML-based vs. heuristic-based) kept side by side in the codebase — see
-`backend/pdf_processor/README.md` and `backend/processor/processor.py`.
+`backend/practice_hub/pdf_processor/README.md` and `backend/processor/processor.py`.
