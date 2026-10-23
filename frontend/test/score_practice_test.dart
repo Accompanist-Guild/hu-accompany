@@ -1,9 +1,12 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hu_accomponist/features/practice/Exercise.dart';
 import 'package:hu_accomponist/features/practice/Phrase_Assembler.dart';
 import 'package:hu_accomponist/features/practice/live_judge.dart';
 import 'package:hu_accomponist/features/practice/practice_prefs.dart';
+import 'package:hu_accomponist/features/practice/score_practice_session.dart';
+import 'package:hu_accomponist/features/practice/score_practice_widgets.dart';
 import 'package:hu_accomponist/features/practice/score_timeline.dart';
 import 'package:hu_accomponist/integrations/feedback/Phrase_send2_server.dart';
 import 'package:hu_accomponist/integrations/feedback/Pull_back_phrase.dart';
@@ -69,6 +72,30 @@ void main() {
       'bpm': 72,
       'timeSignature': '3/8',
       'staves': 2,
+    });
+  }
+
+  /// Two bars (written bars 0 and 1, two notes each) with a repeat sign,
+  /// then a third bar: played 0 1 0 1 2, 300 ms a note, at 60 bpm.
+  ScoreTimeline repeated() {
+    const measures = [0, 0, 1, 1, 0, 0, 1, 1, 2, 2];
+    return ScoreTimeline.fromJson({
+      'notes': [
+        for (var i = 0; i < measures.length; i++)
+          {
+            'id': i + 1,
+            'midi': 60 + i,
+            'startMs': i * 300.0,
+            'durationMs': 300.0,
+            'measure': measures[i],
+            'measureNumber': measures[i] + 1,
+            'visit': i ~/ 2,
+            'staff': 0,
+          },
+      ],
+      'bpm': 60,
+      'timeSignature': '2/4',
+      'staves': 1,
     });
   }
 
@@ -171,7 +198,6 @@ void main() {
       expect(result(3), NoteResult.early);
       expect(result(4), NoteResult.late);
       expect(judge.marks[4]!.offMs, closeTo(200, 0.1));
-      expect(judge.marks[4]!.offShare, closeTo(200 / 208.3, 0.01));
       expect(judge.marks[4]!.describe(notes[3]), 'D♯ came late by 200 ms');
     });
 
@@ -321,6 +347,60 @@ void main() {
     });
   });
 
+  group('repeats', () {
+    late List<ExpectedNote> notes;
+    late LiveJudge judge;
+    setUp(() {
+      notes = repeated().layout(bpm: 60);
+      judge = LiveJudge(notes, bpm: 60);
+    });
+
+    test('knows which time through each bar is', () {
+      expect(notes.map((n) => n.pass), [0, 0, 0, 0, 1, 1, 1, 1, 0, 0]);
+      expect(notes[4].measure, notes[0].measure);
+    });
+
+    test('groups the score into sections, a repeat with each time', () {
+      expect(judge.sections.length, 2);
+      final first = judge.sections.first;
+      expect(first.repeated, isTrue);
+      expect(first.bars, 'Bars 1–2');
+      expect(first.times, [
+        [1, 2, 3, 4],
+        [5, 6, 7, 8],
+      ]);
+      expect(judge.sections.last.times, [
+        [9, 10],
+      ]);
+      expect(judge.sectionOf(6), (first, 1));
+      expect(ScoreSection.timeName(1), '2nd time');
+    });
+
+    test('says once when the repeat starts, with its notes', () {
+      expect(judge.repeatStarting(), isNull);
+      judge.add([for (var i = 1; i <= 3; i++) heard(i, (i - 1) * 300.0)]);
+      expect(judge.repeatStarting(), isNull, reason: 'note 4 is still to come');
+      judge.add([heard(4, 900)]);
+      expect(judge.repeatStarting(), [5, 6, 7, 8]);
+      expect(judge.repeatStarting(), isNull);
+      // The first time through keeps its verdicts.
+      expect(judge.marks.keys, containsAll([1, 2, 3, 4]));
+    });
+
+    test('going on part-way through a repeat shows that time through', () {
+      for (var i = 1; i <= 6; i++) {
+        judge.add([heard(i, (i - 1) * 300.0)]);
+      }
+      judge.repeatStarting();
+      final update = judge.restartFrom(7);
+      expect(update.showPass, [5, 6, 7, 8]);
+      expect(judge.repeatStarting(), isNull, reason: 'already under way');
+      // From the start of the repeat, it is announced again.
+      judge.restartFrom(5);
+      expect(judge.repeatStarting(), [5, 6, 7, 8]);
+    });
+  });
+
   group('phrases sent to the backend', () {
     final notes = elise().layout(bpm: 72);
 
@@ -342,6 +422,136 @@ void main() {
       final wire = PhraseUploadService.userNoteToJson(phrase.userNotes.last);
       expect(wire.containsKey('note_id'), isFalse);
       expect(wire['pitch_hz'], 587.33);
+    });
+  });
+
+  group('summary', () {
+    testWidgets('shows what was played at once, then takes in the tips', (
+      tester,
+    ) async {
+      final session = ScorePracticeSession(
+        piece: const PieceInfo(
+          title: 'Für Elise',
+          composer: '',
+          composedDate: '',
+        ),
+        timeline: elise(),
+        settings: const ScorePracticeSettings(bpm: 72),
+        onLive: (_) {},
+        onReport: (_) {},
+      );
+      addTearDown(session.dispose);
+      // Notes 1 and 3 played; 2 skipped; the player stopped after note 3.
+      session.onRustBatch([heard(1, 0), heard(3, 417)]);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => ScoreSummarySheet.show(context, session),
+                child: const Text('stop'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('stop'));
+      await tester.pumpAndSettle();
+      // Only what was played counts: 2 of 3, not of the whole piece.
+      expect(find.text('2 of 3 notes right'), findsOneWidget);
+      expect(find.text('67'), findsOneWidget);
+      expect(find.text('D♯ was not played'), findsOneWidget);
+      expect(find.text('Go slowly.'), findsNothing);
+
+      // The server's verdict comes in after the sheet is open.
+      session.judge.review(
+        PhraseReport(
+          piece: session.piece,
+          recordedAt: DateTime(2026),
+          phrase: 1,
+          bpm: 72,
+          timeSignature: '3/8',
+          bars: const [1],
+          scores: const PhraseScores(overall: 60),
+          feedback: const [
+            PhraseFeedbackItem(
+              bars: 1,
+              box: null,
+              category: 'notes',
+              severity: 'major',
+              confidence: 1,
+              message: '',
+              details: {
+                'note_id': 2,
+                'issue': 'missing_note',
+                'suggestion': 'Go slowly.',
+              },
+            ),
+          ],
+          sessionId: 's',
+          storedAt: '',
+        ),
+      );
+      // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+      session.notifyListeners();
+      await tester.pumpAndSettle();
+      expect(find.text('Go slowly.'), findsOneWidget);
+    });
+
+    testWidgets('folds a repeated section, with each time through', (
+      tester,
+    ) async {
+      final session = ScorePracticeSession(
+        piece: const PieceInfo(
+          title: 'Two bars',
+          composer: '',
+          composedDate: '',
+        ),
+        timeline: repeated(),
+        settings: const ScorePracticeSettings(bpm: 60),
+        onLive: (_) {},
+        onReport: (_) {},
+      );
+      addTearDown(session.dispose);
+      // The first time clean; the second time note 6 is skipped.
+      session.onRustBatch([
+        for (final i in [1, 2, 3, 4, 5, 7, 8]) heard(i, (i - 1) * 300.0),
+      ]);
+
+      SummaryChoice? choice;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () async =>
+                    choice = await ScoreSummarySheet.show(context, session),
+                child: const Text('stop'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('stop'));
+      await tester.pumpAndSettle();
+      expect(find.text('Bars 1–2 · played 2 times'), findsOneWidget);
+      expect(
+        find.text('1st time: clean · 2nd time: 1 mistake'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('was not played'), findsNothing);
+
+      await tester.tap(find.text('Bars 1–2 · played 2 times'));
+      await tester.pumpAndSettle();
+      expect(find.text('No mistakes'), findsOneWidget);
+      expect(find.text('2ND TIME'), findsOneWidget);
+      expect(find.textContaining('was not played'), findsOneWidget);
+
+      await tester.tap(find.text('See it on the score'));
+      await tester.pumpAndSettle();
+      expect(choice?.note, isNull);
+      expect(choice, isNotNull);
     });
   });
 }

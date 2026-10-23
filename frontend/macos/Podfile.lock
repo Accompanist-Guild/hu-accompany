@@ -14,9 +14,9 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/rust_lib_hu_accomponist/macos
 
 SPEC CHECKSUMS:
-  FlutterMacOS: c232990155153907050900a2e175c7773903ba4e
+  FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
   rust_lib_hu_accomponist: b424b85b69225e5774b83dc5a7c11555f08b1524
 
 PODFILE CHECKSUM: 1e95c36afbfd1cb6423ceca4de7a8e1b256fb6ac
 
-COCOAPODS: 1.16.2
+COCOAPODS: 1.17.0

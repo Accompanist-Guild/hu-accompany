@@ -25,7 +25,7 @@ void main() {
       'Missed',
       'Early',
       'Late',
-      'Repeated bars',
+      'Repeats',
       'Up next',
       'Heard',
     ]) {

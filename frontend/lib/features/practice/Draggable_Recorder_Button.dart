@@ -30,9 +30,26 @@ class RecorderController {
   _Draggable_Recorder_ButtonState? _state;
 
   bool get isPaused => _state?._paused ?? false;
+  bool get isRecording => _state?._isRecording ?? false;
 
   /// Continues a paused recording (through [Draggable_Recorder_Button.onBeforeResume]).
   Future<void> resume() async => _state?._resume();
+
+  /// Pauses the recording, as the Pause button does.
+  Future<void> pause() async {
+    if (isRecording) await _state?._act(RecorderAction.pause);
+  }
+
+  /// Ends the recording (running or paused), as tapping the button does.
+  Future<void> finish() async {
+    final state = _state;
+    if (state == null) return;
+    if (state._isRecording) {
+      await state._toggle();
+    } else if (state._paused) {
+      await state._act(null);
+    }
+  }
 }
 
 class Draggable_Recorder_Button extends StatefulWidget {
@@ -51,6 +68,10 @@ class Draggable_Recorder_Button extends StatefulWidget {
   final Future<bool> Function()? onBeforeResume;
 
   final RecorderController? controller;
+
+  /// Out of sight (and out of reach) while the score has the whole screen;
+  /// the recording goes on.
+  final bool hidden;
 
   /// Tints the pulse halo — lets the score screen reflect the last phrase's
   /// verdict without any extra chrome on top of the button.
@@ -82,6 +103,7 @@ class Draggable_Recorder_Button extends StatefulWidget {
     this.onAction,
     this.onBeforeResume,
     this.controller,
+    this.hidden = false,
   });
 
   @override
@@ -153,6 +175,10 @@ class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
     if (old.controller != widget.controller) {
       old.controller?._state = null;
       widget.controller?._state = this;
+    }
+    if (widget.hidden && !old.hidden) {
+      _fanTimer?.cancel();
+      _fanOpen = false;
     }
   }
 
@@ -463,9 +489,14 @@ class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
       ),
     );
 
+    final shown = AnimatedOpacity(
+      opacity: widget.hidden ? 0 : 1,
+      duration: Motion.base,
+      child: IgnorePointer(ignoring: widget.hidden, child: content),
+    );
     return ValueListenableBuilder<Offset>(
       valueListenable: _position,
-      child: content,
+      child: shown,
       builder: (context, pos, child) {
         if (!_fanOpen)
           return Positioned(left: pos.dx, top: pos.dy, child: child!);

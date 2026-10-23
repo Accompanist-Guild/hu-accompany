@@ -142,15 +142,27 @@ class ScorePracticeSession extends ChangeNotifier {
     if (_disposed) return;
     final update = judge.add(batch);
     final due = judge.due();
-    if (!update.isEmpty || due != null) {
-      onLive(LiveUpdate(marks: update.marks, played: update.played, due: due));
+    final repeat = judge.repeatStarting();
+    if (!update.isEmpty || due != null || repeat != null) {
+      onLive(
+        LiveUpdate(
+          marks: update.marks,
+          played: update.played,
+          due: due,
+          repeat: repeat,
+        ),
+      );
     }
     _enqueue(_assembler.add(batch));
   }
 
   void _refreshDue() {
+    if (_disposed) return;
     final due = judge.due();
-    if (due != null && !_disposed) onLive(LiveUpdate(due: due));
+    final repeat = judge.repeatStarting();
+    if (due != null || repeat != null) {
+      onLive(LiveUpdate(due: due, repeat: repeat));
+    }
   }
 
   /// The microphone stopped (a pause or the end): nothing is due any more,
@@ -201,6 +213,7 @@ class ScorePracticeSession extends ChangeNotifier {
     final update = judge.review(report);
     if (!update.isEmpty) onLive(update);
     onReport(report);
+    notifyListeners(); // the summary, if open, takes in the new tips
   }
 
   void _setCountIn(int? value) {

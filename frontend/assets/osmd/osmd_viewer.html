@@ -37,6 +37,20 @@
     /* A mistake flashes for a few seconds, then stays. */
     .hu-flash { animation: hu-flash 500ms ease-in-out; }
     @keyframes hu-flash { 0%, 100% { opacity: 1; } 50% { opacity: 0.12; } }
+    /* A repeat starting: the word pops up over the music, then fades. */
+    .hu-pop {
+      position: absolute; z-index: 6; transform: translate(-50%, -50%); pointer-events: none; white-space: nowrap;
+      font: 700 96px/1 "Bradley Hand", "Chalkboard SE", "Comic Sans MS", cursive; letter-spacing: 1px;
+      text-shadow: 0 0 6px #FFFCF4, 0 0 14px #FFFCF4, 0 2px 0 rgba(48, 39, 31, .15);
+      animation: hu-pop 1.8s cubic-bezier(.2, .9, .3, 1.2) forwards;
+    }
+    @keyframes hu-pop {
+      0% { opacity: 0; transform: translate(-50%, -50%) scale(.4) rotate(-6deg); }
+      18% { opacity: 1; transform: translate(-50%, -50%) scale(1.12) rotate(-3deg); }
+      30% { transform: translate(-50%, -50%) scale(1) rotate(-3deg); }
+      75% { opacity: 1; }
+      100% { opacity: 0; transform: translate(-50%, -62%) scale(1) rotate(-3deg); }
+    }
     .hu-tip {
       position: absolute; z-index: 5; max-width: 240px; padding: 7px 11px; border-radius: 10px;
       background: #FFFCF4; color: #30271F; border: 1px solid #D8C58D; box-shadow: 0 4px 14px rgba(48, 39, 31, .18);
@@ -51,6 +65,8 @@
     body.picking .vf-stavenote { cursor: pointer; }
     @media (prefers-reduced-motion: reduce) {
       .hu-due, .hu-jump, .hu-flash { animation: none; }
+      .hu-pop { animation: hu-pop-still 1.8s linear forwards; }
+      @keyframes hu-pop-still { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
     }
   </style>
   <!-- Bundled locally (OSMD 2.2.0, BSD-3-Clause, see LICENSE.txt) so the
@@ -371,18 +387,16 @@
       // The app (score_practice_session.dart) sends, by timeline note id, how
       // each note went; this draws it on the engraving:
       //   perfect / close   the whole note (head, stem, flag, its accidental)
-      //                     in the perfect or close colour;
-      //   missed            the whole note in the wrong colour, flashing;
-      //   wrong             the written note as it is, plus a hollow note in the
-      //                     wrong colour at the key that was played, flashing;
-      //   early / late      the written note hollow, plus a hollow note shifted
-      //                     to where it was played, flashing.
-      // A note a repeat plays more than once is outlined instead, filled a little
-      // more by each time through, in the colour of the latest.
-      // Marks are kept here and drawn again after every re-render (zoom,
-      // rotation), so they last until the next run.
+      //                     filled in the perfect or close colour;
+      //   early / late /    the note stays as written; a small word below it,
+      //   wrong / missed    with an arrow pointing up at it, says what happened
+      //                     ("late", "early", "D, not E", "missed"). Nothing
+      //                     else is drawn over the words; only the pen ink is.
+      // A repeat plays some notes again: when it starts, those notes go back to
+      // black and fill in afresh (the app keeps every time through). Marks are
+      // kept here and drawn again after every re-render (zoom, rotation).
       var timeline = null;        // ScoreTimeline.extract() of the loaded score
-      var marks = {};             // id -> {r, played, shift, at}
+      var marks = {};             // id -> {r, played, at}
       var dueIds = [];
       var following = false;
       var lastTouch = 0;
@@ -391,7 +405,9 @@
       var FLASH_MS = 3000;
       var NS = 'http://www.w3.org/2000/svg';
       var occurrences = null;     // source note -> [ids], in time order
-      var drawn = new Map();      // source note -> {parts: [el], ghosts: [el]}
+      var drawn = new Map();      // source note -> {parts: [el], labels: [el]}
+      var current = new Map();    // source note -> the id (time through) shown
+      var labels = [];            // [{el, box}] words drawn, kept apart
 
       function colorOf(r) {
         return r === 'perfect' ? COLORS.perfect : r === 'close' ? COLORS.close : COLORS.wrong;
@@ -478,17 +494,6 @@
         });
       }
 
-      // An outline of the head, filled to `share` (0..1) with `color`.
-      function outlined(el, color, share) {
-        shapesOf(el).forEach(function (part) {
-          if (part.tagName === 'g') return;
-          setAttr(part, 'stroke', color);
-          setAttr(part, 'stroke-width', '1.4');
-          setAttr(part, 'fill', share > 0 ? color : 'none');
-          setAttr(part, 'fill-opacity', String(share));
-        });
-      }
-
       function flash(els, since) {
         var left = FLASH_MS - (Date.now() - since);
         if (left <= 200) return;
@@ -500,66 +505,97 @@
         });
       }
 
-      // Lines up from the bottom of the staff: C D E F G A B per octave.
-      var LETTER_OF_FUNDAMENTAL = { 0: 0, 2: 1, 4: 2, 5: 3, 7: 4, 9: 5, 11: 6 };
-      var SHARP = { letter: [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6], acc: [0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0] };
-      var FLAT = { letter: [0, 1, 1, 2, 2, 3, 4, 4, 5, 5, 6, 6], acc: [0, -1, 0, -1, 0, 0, -1, 0, -1, 0, -1, 0] };
-
-      function writtenStep(source) {
+      // Note names, spelled with flats when the written note is flat.
+      var SHARPS = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+      var FLATS = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B'];
+      function writtenIsFlat(source) {
         var p = source.Pitch;
-        var letter = LETTER_OF_FUNDAMENTAL[p.FundamentalNote];
-        if (letter === undefined) return null;
+        if (!p) return false;
         var octave = p.Octave + 3;
-        var acc = (source.halfTone + 12) - ((octave + 1) * 12 + p.FundamentalNote);
-        return { step: octave * 7 + letter, acc: acc };
+        return (source.halfTone + 12) - ((octave + 1) * 12 + p.FundamentalNote) < 0;
+      }
+      function nameOf(midi, flats) { return (flats ? FLATS : SHARPS)[((midi % 12) + 12) % 12]; }
+
+      function wordFor(mark, source) {
+        switch (mark.r) {
+          case 'early': return 'early';
+          case 'late': return 'late';
+          case 'missed': return 'missed';
+          case 'wrong':
+            if (typeof mark.played !== 'number') return 'wrong note';
+            var flats = writtenIsFlat(source);
+            return nameOf(mark.played, flats) + ', not ' + nameOf(source.halfTone + 12, flats);
+        }
+        return '';
       }
 
-      // Where a played key goes on the staff, spelled with flats when the
-      // written note is flat, otherwise with sharps.
-      function playedStep(midi, flats) {
-        var pc = ((midi % 12) + 12) % 12, table = flats ? FLAT : SHARP;
-        var octave = Math.floor(midi / 12) - 1;
-        return { step: octave * 7 + table.letter[pc], acc: table.acc[pc] };
-      }
-
-      function ghostLayer(head) {
-        var svg = head.ownerSVGElement;
-        var layer = svg.querySelector('g.hu-ghosts');
+      function labelLayer(svg) {
+        var layer = svg.querySelector('g.hu-labels');
         if (!layer) {
           layer = document.createElementNS(NS, 'g');
-          layer.setAttribute('class', 'hu-ghosts');
-          svg.appendChild(layer);
+          layer.setAttribute('class', 'hu-labels');
         }
+        svg.appendChild(layer);  // always last: drawn over the music
         return layer;
       }
 
-      // A hollow copy of the head, `dx` along and `steps` lines up the staff.
-      function ghost(head, color, dx, steps, accidental) {
-        var box = head.getBBox();
-        var dy = -steps * box.height / 2;
+      function overlaps(a, b) {
+        return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+      }
+
+      // A word right below the note, with a small arrow up to it. When it
+      // would sit on another word it drops a line (or two), the arrow
+      // reaching back up to the note.
+      function label(head, text, color) {
+        var box = head.getBBox(), unit = box.height || 8;
+        var x = box.x + box.width / 2, y = box.y + box.height + unit * 0.3;
         var g = document.createElementNS(NS, 'g');
-        g.setAttribute('transform', 'translate(' + dx.toFixed(2) + ',' + dy.toFixed(2) + ')');
-        var copy = head.cloneNode(true);
-        shapesOf(copy).forEach(function (part) {
-          Array.prototype.slice.call(part.attributes || []).forEach(function (a) {
-            if (a.name.indexOf('data-hu-') === 0) part.removeAttribute(a.name);
-          });
-          if (part.tagName === 'g') return;
-          part.setAttribute('fill', 'none');
-          part.setAttribute('stroke', color);
-          part.setAttribute('stroke-width', '1.6');
-        });
-        g.appendChild(copy);
-        if (accidental) {
-          var text = document.createElementNS(NS, 'text');
-          text.textContent = accidental;
-          text.setAttribute('x', (box.x - box.width * 0.9).toFixed(2));
-          text.setAttribute('y', (box.y + box.height * 0.95).toFixed(2));
-          text.setAttribute('font-size', (box.height * 1.6).toFixed(2));
-          text.setAttribute('fill', color);
-          g.appendChild(text);
+        g.setAttribute('class', 'hu-label');
+        var arrow = document.createElementNS(NS, 'path');
+        var a = unit * 0.4, len = unit * 0.9;
+        arrow.setAttribute('fill', 'none');
+        arrow.setAttribute('stroke', color);
+        arrow.setAttribute('stroke-width', String(Math.max(1.1, unit * 0.14)));
+        arrow.setAttribute('stroke-linecap', 'round');
+        arrow.setAttribute('stroke-linejoin', 'round');
+        var t = document.createElementNS(NS, 'text');
+        t.textContent = text;
+        t.setAttribute('x', x);
+        t.setAttribute('text-anchor', 'middle');
+        t.setAttribute('font-size', (unit * 1.35).toFixed(1));
+        t.setAttribute('font-family', '"Bradley Hand", "Chalkboard SE", "Comic Sans MS", cursive');
+        t.setAttribute('font-weight', '700');
+        t.setAttribute('fill', color);
+        // A paper-coloured edge keeps the word readable over staff lines.
+        t.setAttribute('stroke', '#FFFCF4');
+        t.setAttribute('stroke-width', String(unit * 0.4));
+        t.setAttribute('stroke-linejoin', 'round');
+        t.setAttribute('paint-order', 'stroke');
+        g.appendChild(arrow);
+        g.appendChild(t);
+        labelLayer(head.ownerSVGElement).appendChild(g);
+
+        function place(row) {
+          var drop = len + row * unit * 1.5;
+          arrow.setAttribute('d', 'M' + x + ' ' + (y + drop) + 'V' + y + 'M' + (x - a) + ' ' + (y + a) + 'L' + x + ' ' + y + 'L' + (x + a) + ' ' + (y + a));
+          t.setAttribute('y', y + drop + unit * 1.15);
+          return t.getBBox();
         }
-        ghostLayer(head).appendChild(g);
+        function clash(bb) {
+          return labels.reduce(function (sum, l) {
+            if (!overlaps(bb, l.box)) return sum;
+            var w = Math.min(bb.x + bb.width, l.box.x + l.box.width) - Math.max(bb.x, l.box.x);
+            return sum + w;
+          }, 0);
+        }
+        var best = null;
+        for (var row = 0; row < 3; row++) {
+          var bb = place(row), hit = clash(bb);
+          if (!best || hit < best.hit) best = { row: row, hit: hit };
+          if (!hit) break;
+        }
+        var final = place(best.row);
+        labels.push({ el: g, box: final });
         return g;
       }
 
@@ -567,50 +603,72 @@
         var done = drawn.get(source);
         if (!done) return;
         done.parts.forEach(restore);
-        done.ghosts.forEach(function (g) { if (g.parentNode) g.parentNode.removeChild(g); });
+        done.labels.forEach(function (g) {
+          if (g.parentNode) g.parentNode.removeChild(g);
+          labels = labels.filter(function (l) { return l.el !== g; });
+        });
         drawn.delete(source);
       }
 
-      // Draws how the note `source` went, from the marks of all its occurrences.
+      // Draws how the note `source` went this time through.
       function drawSource(source, animate) {
         clearSource(source);
         var g = graphicOfSource(source);
         if (!g) return;
-        var ids = occurrencesOf(source);
-        var marked = ids.filter(function (id) { return marks[id]; });
-        if (!marked.length) return;
-        var latest = marks[marked[marked.length - 1]];
-        var heads = headsOf(g), color = colorOf(latest.r);
-        var done = { parts: [], ghosts: [] };
+        var id = current.get(source);
+        if (id === undefined) {
+          var ids = occurrencesOf(source).filter(function (i) { return marks[i]; });
+          id = ids[ids.length - 1];
+        }
+        var latest = id !== undefined && marks[id];
+        if (!latest) return;
+        var done = { parts: [], labels: [] };
         drawn.set(source, done);
+        if (latest.r === 'perfect' || latest.r === 'close') {
+          wholeOf(g).forEach(function (el) { solid(el, colorOf(latest.r)); done.parts.push(el); });
+          return;
+        }
+        var head = headsOf(g)[0];
+        if (!head) return;
+        var word = label(head, wordFor(latest, source), COLORS.wrong);
+        done.labels.push(word);
+        if (animate) flash([word], latest.at);
+      }
 
-        if (ids.length > 1) {
-          heads.forEach(function (h) { outlined(h, color, marked.length / ids.length); done.parts.push(h); });
-        } else if (latest.r === 'perfect' || latest.r === 'close' || latest.r === 'missed') {
-          wholeOf(g).forEach(function (el) { solid(el, color); done.parts.push(el); });
-          if (latest.r === 'missed' && animate) flash(done.parts, latest.at);
-        } else if (latest.r === 'early' || latest.r === 'late') {
-          heads.forEach(function (h) { outlined(h, '#1a1a1a', 0); done.parts.push(h); });
-        }
+      // Shows notes `ids` as they went this time through (black if not played
+      // yet), in place of their other times through.
+      function showTimes(ids) {
+        var changed = new Set();
+        ids.forEach(function (id) {
+          var source = sourceOf(id);
+          if (!source) return;
+          current.set(source, id);
+          changed.add(source);
+        });
+        changed.forEach(function (source) { drawSource(source, false); });
+      }
 
-        if (!heads.length) return;
-        var head = heads[0], width = head.getBBox().width;
-        var marker = null;
-        if (latest.r === 'wrong' && typeof latest.played === 'number') {
-          var written = writtenStep(source);
-          if (written) {
-            var played = playedStep(latest.played, written.acc < 0);
-            var sign = played.acc > 0 ? '♯' : played.acc < 0 ? '♭' : (written.acc !== 0 && played.step === written.step ? '♮' : '');
-            marker = ghost(head, COLORS.wrong, width * 1.35, played.step - written.step, sign);
-          }
-        } else if ((latest.r === 'early' || latest.r === 'late') && typeof latest.shift === 'number') {
-          var shift = Math.max(-1.5, Math.min(1.5, latest.shift));
-          marker = ghost(head, COLORS.wrong, shift * width * 3.2, 0, '');
-        }
-        if (marker) {
-          done.ghosts.push(marker);
-          if (animate) flash([marker], latest.at);
-        }
+      // A colour a third of the way to black: a pale green reads as a word.
+      function deeper(hex) {
+        var n = parseInt(hex.slice(1), 16);
+        var c = [n >> 16, (n >> 8) & 255, n & 255].map(function (v) { return Math.round(v * 0.68); });
+        return 'rgb(' + c.join(',') + ')';
+      }
+
+      // A big word popping up over the music for a moment.
+      function pop(text) {
+        var el = document.createElement('div');
+        el.className = 'hu-pop';
+        el.textContent = text;
+        el.style.color = deeper(COLORS.perfect);
+        var p = focusPoint(window.innerWidth / 2, window.innerHeight * 0.38);
+        // The page may be drawn scaled; the word is sized for the screen.
+        var scale = page.getBoundingClientRect().width / (page.offsetWidth || 1) || 1;
+        el.style.fontSize = Math.min(96, window.innerWidth * 0.2) / scale + 'px';
+        el.style.left = p.x + 'px';
+        el.style.top = p.y + 'px';
+        page.appendChild(el);
+        setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 1900);
       }
 
       function groupOf(id) {
@@ -655,6 +713,7 @@
       function applyLive() {
         if (!timeline) return;
         drawn = new Map();  // a fresh engraving: nothing of ours is on it
+        labels = [];
         var sources = new Set();
         Object.keys(marks).forEach(function (id) { sources.add(sourceOf(+id)); });
         sources.forEach(function (s) { drawSource(s, false); });
@@ -785,18 +844,29 @@
 
 
       window.OSMDBridge = {
-        // update: {marks: [{id, r, played?, shift?}], cleared: [ids], due: [ids]
-        //          (omit to keep), played: [ids], follow: bool}
-        // r: 'perfect' | 'close' | 'early' | 'late' | 'wrong' | 'missed'.
+        // update: {marks: [{id, r, played?}], cleared: [ids], due: [ids]
+        //          (omit to keep), played: [ids], follow: bool,
+        //          repeat: [ids] (a repeat starts: these notes, unplayed, take
+        //          the place of their earlier time through, and the word pops),
+        //          showPass: [ids] (show these times through, quietly)}
+        // r: 'perfect' | 'close' | 'early' | 'late' | 'wrong' | 'missed';
+        // played: the MIDI note heard instead, for 'wrong'.
         live: function (update) {
           if (!timeline) return;
           var now = Date.now(), changed = new Set();
-          (update.cleared || []).forEach(function (id) { delete marks[id]; changed.add(sourceOf(id)); });
+          (update.cleared || []).forEach(function (id) {
+            delete marks[id];
+            var source = sourceOf(id);
+            if (current.get(source) === id) current.delete(source);
+            changed.add(source);
+          });
           (update.marks || []).forEach(function (m) {
-            marks[m.id] = { r: m.r, played: m.played, shift: m.shift, at: now };
+            marks[m.id] = { r: m.r, played: m.played, at: now };
             changed.add(sourceOf(m.id));
           });
           changed.forEach(function (source) { if (source) drawSource(source, true); });
+          if (update.showPass) showTimes(update.showPass);
+          if (update.repeat) { showTimes(update.repeat); pop(update.repeatWord || 'Repeat!'); }
           if (typeof update.follow === 'boolean') following = update.follow;
           if (update.due) setDue(update.due);
           (update.played || []).forEach(jump);
@@ -808,6 +878,8 @@
           marks = {};
           drawn.forEach(function (_, source) { clearSource(source); });
           drawn = new Map();
+          current = new Map();
+          labels = [];
           setDue([]);
           hideTip();
           clearSpotlight();
@@ -828,6 +900,12 @@
         // Darkens and blurs everything but note `id`, scrolled to it.
         spotlight: spotlight,
         clearSpotlight: clearSpotlight,
+
+        // A drag on the app's layer over the page (while recording).
+        scrollBy: function (dy) {
+          lastTouch = Date.now();
+          window.scrollBy(0, dy);
+        },
 
         // While on, a tapped note is reported as 'notePick' (a place to start).
         setPicking: function (on) {
@@ -855,6 +933,8 @@
           occurrences = null;
           marks = {};
           drawn = new Map();
+          current = new Map();
+          labels = [];
           dueIds = [];
           hideTip();
           clearSpotlight();

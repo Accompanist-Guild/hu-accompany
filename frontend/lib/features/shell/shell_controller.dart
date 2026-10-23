@@ -21,6 +21,18 @@ class ShellController extends ChangeNotifier {
   /// count it has already honoured.
   int get tutorialRequests => _tutorialRequests;
 
+  bool _immersive = false;
+
+  /// A page wants the whole screen (Practice while recording): the disk bar
+  /// steps aside until it says otherwise.
+  bool get immersive => _immersive;
+
+  void setImmersive(bool value) {
+    if (value == _immersive) return;
+    _immersive = value;
+    notifyListeners();
+  }
+
   void goTo(int index) {
     assert(index >= 0 && index < diskPages.length);
     if (index == _index) return;

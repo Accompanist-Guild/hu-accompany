@@ -36,11 +36,7 @@ class NoteVerdict {
   /// How far off the note came, in ms (negative = early).
   final double? offMs;
 
-  /// [offMs] as a share of the time to the next written note, which is how
-  /// far the score shifts the marker of where it was played.
-  final double? offShare;
-
-  const NoteVerdict(this.result, {this.playedMidi, this.offMs, this.offShare});
+  const NoteVerdict(this.result, {this.playedMidi, this.offMs});
 
   /// One line about it, for the note's tip and the summary.
   String describe(ExpectedNote note) {
@@ -73,15 +69,62 @@ class LiveUpdate {
   /// The notes due to be played now (they sway), or null when unchanged.
   final List<int>? due;
 
+  /// A repeat starts: these notes (its time through) take the place of their
+  /// earlier time on the score, unplayed, and "Repeat!" pops up.
+  final List<int>? repeat;
+
+  /// These times through are to be shown, quietly (going on from part-way
+  /// through a repeat, or looking back over a run).
+  final List<int>? showPass;
+
   const LiveUpdate({
     this.marks = const {},
     this.cleared = const [],
     this.played = const [],
     this.due,
+    this.repeat,
+    this.showPass,
   });
 
   bool get isEmpty =>
-      marks.isEmpty && cleared.isEmpty && played.isEmpty && due == null;
+      marks.isEmpty &&
+      cleared.isEmpty &&
+      played.isEmpty &&
+      due == null &&
+      repeat == null &&
+      showPass == null;
+}
+
+/// A stretch of the score as the player goes through it: bars played once,
+/// or bars a repeat plays more than once, with each time through.
+class ScoreSection {
+  /// Printed bars, first and last.
+  final int firstBar;
+  final int lastBar;
+
+  /// The notes of each time through, in time order.
+  final List<List<int>> times;
+
+  const ScoreSection(this.firstBar, this.lastBar, this.times);
+
+  bool get repeated => times.length > 1;
+
+  String get bars =>
+      firstBar == lastBar ? 'Bar $firstBar' : 'Bars $firstBar–$lastBar';
+
+  /// "1st time", "2nd time", ...
+  static String timeName(int i) {
+    final n = i + 1;
+    final suffix = n % 100 >= 11 && n % 100 <= 13
+        ? 'th'
+        : switch (n % 10) {
+            1 => 'st',
+            2 => 'nd',
+            3 => 'rd',
+            _ => 'th',
+          };
+    return '$n$suffix time';
+  }
 }
 
 /// Judges a performance note by note as Rust reports it, so the score can
@@ -105,6 +148,7 @@ class LiveJudge {
   }) : notes = List.of(notes)..sort((a, b) => a.startMs.compareTo(b.startMs)),
        _beatMs = 60000.0 / bpm {
     _byId = {for (final n in this.notes) n.noteId: n};
+    _findRuns();
   }
 
   final List<ExpectedNote> notes;
@@ -124,6 +168,15 @@ class LiveJudge {
   /// Notes before this score time are not part of the current run (it was
   /// started, or restarted, from a later note).
   double _fromMs = double.negativeInfinity;
+
+  /// Stretches of notes played the same time through (see
+  /// [ExpectedNote.pass]), in time order; [sections] groups them.
+  final List<List<int>> _runs = [];
+  final Map<int, int> _runOf = {};
+  late final List<ScoreSection> sections;
+
+  /// Repeats ([_runs] after the first time) already announced this run.
+  final Set<int> _announced = {};
 
   /// The latest note heard starting: its written start, and when it arrived.
   double? _lastStartMs;
@@ -159,6 +212,75 @@ class LiveJudge {
   static const double jitterMs = 40;
 
   ExpectedNote? note(int id) => _byId[id];
+
+  void _findRuns() {
+    final passOfRun = <int>[];
+    for (final n in notes) {
+      if (_runs.isEmpty || passOfRun.last != n.pass) {
+        _runs.add([]);
+        passOfRun.add(n.pass);
+      }
+      _runs.last.add(n.noteId);
+      _runOf[n.noteId] = _runs.length - 1;
+    }
+    // A repeat joins the section it plays again: the latest earlier run one
+    // time through behind it that shares a bar with it.
+    final sectionOfRun = <int, int>{};
+    final groups = <List<int>>[];
+    Set<int> bars(int run) => {
+      for (final id in _runs[run]) _byId[id]!.measure ?? -1,
+    };
+    for (var r = 0; r < _runs.length; r++) {
+      int? joins;
+      if (passOfRun[r] > 0) {
+        final mine = bars(r);
+        for (var e = r - 1; e >= 0; e--) {
+          if (passOfRun[e] == passOfRun[r] - 1 && bars(e).any(mine.contains)) {
+            joins = sectionOfRun[e];
+            break;
+          }
+        }
+      }
+      if (joins == null) {
+        groups.add([r]);
+        sectionOfRun[r] = groups.length - 1;
+      } else {
+        groups[joins].add(r);
+        sectionOfRun[r] = joins;
+      }
+    }
+    sections = [
+      for (final g in groups)
+        () {
+          final printed = [for (final id in _runs[g.first]) bar(_byId[id]!)];
+          return ScoreSection(
+            printed.reduce(math.min),
+            printed.reduce(math.max),
+            [for (final r in g) _runs[r]],
+          );
+        }(),
+    ];
+  }
+
+  /// The section a note is in, and which time through it.
+  (ScoreSection, int)? sectionOf(int id) {
+    for (final s in sections) {
+      for (var i = 0; i < s.times.length; i++) {
+        if (s.times[i].contains(id)) return (s, i);
+      }
+    }
+    return null;
+  }
+
+  /// The notes of a repeat the player has just reached, once per run; null
+  /// when none has started.
+  List<int>? repeatStarting() {
+    final id = next;
+    if (id == null) return null;
+    final run = _runOf[id]!;
+    if (_byId[id]!.pass == 0 || !_announced.add(run)) return null;
+    return _runs[run];
+  }
 
   /// How far off a note may be and still be perfect.
   double perfectMs(ExpectedNote n) =>
@@ -223,26 +345,16 @@ class LiveJudge {
   }
 
   NoteVerdict _timing(ExpectedNote note, double offMs) {
-    final share = offMs / _gapAfter(note);
     if (offMs.abs() <= perfectMs(note)) {
-      return NoteVerdict(NoteResult.perfect, offMs: offMs, offShare: share);
+      return NoteVerdict(NoteResult.perfect, offMs: offMs);
     }
     if (offMs.abs() <= closeMs(note)) {
-      return NoteVerdict(NoteResult.close, offMs: offMs, offShare: share);
+      return NoteVerdict(NoteResult.close, offMs: offMs);
     }
     return NoteVerdict(
       offMs < 0 ? NoteResult.early : NoteResult.late,
       offMs: offMs,
-      offShare: share,
     );
-  }
-
-  /// Time from [note] to the next note that starts after it (or its length).
-  double _gapAfter(ExpectedNote note) {
-    for (final n in notes) {
-      if (n.startMs > note.startMs + chordMs) return n.startMs - note.startMs;
-    }
-    return math.max(note.durationMs, 1);
   }
 
   void _stray(int playedMidi, double atMs, Map<int, NoteVerdict> out) {
@@ -324,7 +436,20 @@ class LiveJudge {
     _lastStartMs = null;
     _lastHeardAt = null;
     _due = const [];
-    return LiveUpdate(cleared: cleared, due: due());
+    // Repeats from here on are announced again; going on from part-way
+    // through one shows that time through.
+    List<int>? showPass;
+    if (from == null) {
+      _announced.clear();
+    } else {
+      final run = _runOf[from.noteId]!;
+      _announced.removeWhere((r) => r >= run);
+      if (from.pass > 0 && _runs[run].first != from.noteId) {
+        _announced.add(run);
+        showPass = _runs[run];
+      }
+    }
+    return LiveUpdate(cleared: cleared, due: due(), showPass: showPass);
   }
 
   /// The notes to play now: the first not played yet (with its chord), and

@@ -31,6 +31,9 @@ class TimelineNote {
   /// The bar number printed on the score (0 for a pickup bar).
   final int measureNumber;
 
+  /// The written bar, counted from 0: the same both times a repeat plays it.
+  final int measure;
+
   /// How many bars had been played before this one (repeats included), so a
   /// repeated bar is a different place in the performance.
   final int visit;
@@ -45,21 +48,27 @@ class TimelineNote {
     required this.startMs,
     required this.durationMs,
     required this.measureNumber,
+    this.measure = 0,
     required this.visit,
     required this.staff,
     required this.grace,
   });
 
-  factory TimelineNote.fromJson(Map<String, dynamic> j) => TimelineNote(
-    id: (j['id'] as num).toInt(),
-    midi: (j['midi'] as num).toInt(),
-    startMs: (j['startMs'] as num).toDouble(),
-    durationMs: (j['durationMs'] as num).toDouble(),
-    measureNumber: (j['measureNumber'] as num?)?.toInt() ?? 1,
-    visit: (j['visit'] as num?)?.toInt() ?? 0,
-    staff: (j['staff'] as num?)?.toInt() ?? 0,
-    grace: j['grace'] == true,
-  );
+  factory TimelineNote.fromJson(Map<String, dynamic> j) {
+    final visit = (j['visit'] as num?)?.toInt() ?? 0;
+    return TimelineNote(
+      id: (j['id'] as num).toInt(),
+      midi: (j['midi'] as num).toInt(),
+      startMs: (j['startMs'] as num).toDouble(),
+      durationMs: (j['durationMs'] as num).toDouble(),
+      measureNumber: (j['measureNumber'] as num?)?.toInt() ?? 1,
+      // Without it, every bar is taken as played once.
+      measure: (j['measure'] as num?)?.toInt() ?? visit,
+      visit: visit,
+      staff: (j['staff'] as num?)?.toInt() ?? 0,
+      grace: j['grace'] == true,
+    );
+  }
 }
 
 /// Everything a score says about when to play what, and its practice layout:
@@ -127,6 +136,13 @@ class ScoreTimeline {
       phraseOfVisit.putIfAbsent(n.visit, () => phrase);
     }
 
+    // Which time through its bar each visit is: repeats play a bar again.
+    final visitsOfMeasure = <int, List<int>>{};
+    for (final n in played) {
+      final visits = visitsOfMeasure.putIfAbsent(n.measure, () => []);
+      if (!visits.contains(n.visit)) visits.add(n.visit);
+    }
+
     final lastOfPhrase = <int, int>{};
     for (final n in played) {
       lastOfPhrase[phraseOfVisit[n.visit]!] = n.id;
@@ -143,6 +159,8 @@ class ScoreTimeline {
           isEnd: lastOfPhrase[phraseOfVisit[n.visit]!] == n.id,
           printedBar: n.measureNumber < 1 ? 1 : n.measureNumber,
           grace: n.grace,
+          measure: n.measure,
+          pass: visitsOfMeasure[n.measure]!.indexOf(n.visit),
         ),
     ];
   }

@@ -13,3 +13,6 @@ Run backend
 cd frontend
 flutter run
 check current address to change it in Send_Strings_2Server.dart: ipconfig getifaddr en0
+
+TO TEST core feature:
+afplay ~/Desktop/fur_elise_mistakes.wav

@@ -195,6 +195,24 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
 
   bool get _listening => _isRecording && !_paused;
 
+  /// While playing along, the score has the whole screen: every button
+  /// steps aside, a tap pauses and a double tap finishes.
+  bool get _immersive =>
+      _listening && !_picking && _exercise == null && _scoreSession != null;
+
+  /// "Tap to pause · double-tap to finish", for a moment as playing starts.
+  bool _showTapHint = false;
+  Timer? _tapHintTimer;
+
+  /// The app shell this page sits in, if any (see [_syncShell]).
+  ShellController? _shell;
+
+  /// Looking back over a finished run on the score.
+  bool _reviewing = false;
+
+  /// While [_reviewing]: section of the run -> the time through shown.
+  final Map<int, int> _shownTimes = {};
+
   /// The play-along guide's step on screen, or null.
   int? _guideStep;
   bool _guideChecked = false;
@@ -253,6 +271,7 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
         _paused = false;
       });
     }
+    if (isRecording) _flashTapHint();
     if (!isRecording) {
       _exercise?.finish();
       _stopPicking();
@@ -513,6 +532,8 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
       _scoreSession = session;
       _paused = false;
       _resumeFromId = null;
+      _reviewing = false;
+      _shownTimes.clear();
     });
     _stopPicking();
     _osmd.resetLive();
@@ -533,8 +554,29 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
         ? await session.resume()
         : await session.prepare(from: from);
     if (error != null && error != 'cancelled') _say(error);
-    if (error == null && mounted) setState(() => _paused = false);
+    if (error == null && mounted) {
+      setState(() => _paused = false);
+      _flashTapHint();
+    }
     return error == null;
+  }
+
+  void _flashTapHint() {
+    if (_exercise != null || _scoreSession == null) return;
+    _tapHintTimer?.cancel();
+    setState(() => _showTapHint = true);
+    _tapHintTimer = Timer(const Duration(milliseconds: 3200), () {
+      if (mounted) setState(() => _showTapHint = false);
+    });
+  }
+
+  /// The disk bar steps aside while the score has the whole screen.
+  void _syncShell() {
+    final shell = _shell = ShellScope.maybeOf(context);
+    if (shell == null || shell.immersive == _immersive) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) shell.setImmersive(_immersive);
+    });
   }
 
   /// The recorder's swiped-out buttons (see [RecorderAction]).
@@ -626,11 +668,39 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
   }
 
   /// The run is over: once its last phrases are judged, the summary.
+  /// The run is over: the summary of what was played, as soon as the last
+  /// notes are in. The server's tips are still on their way; the summary
+  /// takes them in as they come.
   Future<void> _finishScore(ScorePracticeSession session) async {
-    await session.finish();
+    await session.stopListening();
     if (!mounted || !identical(session, _scoreSession)) return;
-    final id = await ScoreSummarySheet.show(context, session);
-    if (id != null && mounted) _osmd.spotlight(id);
+    await _openSummary(session);
+  }
+
+  Future<void> _openSummary(ScorePracticeSession session) async {
+    final choice = await ScoreSummarySheet.show(context, session);
+    if (choice == null || !mounted || !identical(session, _scoreSession)) {
+      return;
+    }
+    setState(() => _reviewing = true);
+    final id = choice.note;
+    if (id == null) return;
+    // A note a repeat plays twice: show the time through it was in.
+    final found = session.judge.sectionOf(id);
+    if (found != null && found.$1.repeated) {
+      _showTime(session.judge.sections.indexOf(found.$1), found.$2);
+    }
+    _osmd.spotlight(id);
+  }
+
+  /// While reviewing: shows how [time] through [section] went.
+  void _showTime(int section, int time) {
+    final session = _scoreSession;
+    if (session == null) return;
+    setState(() => _shownTimes[section] = time);
+    _osmd.live(
+      LiveUpdate(showPass: session.judge.sections[section].times[time]),
+    );
   }
 
   void _onScoreLive(LiveUpdate update) {
@@ -691,6 +761,13 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
 
   @override
   void dispose() {
+    _tapHintTimer?.cancel();
+    final shell = _shell;
+    if (shell != null && shell.immersive) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => shell.setImmersive(false),
+      );
+    }
     _exercise?.dispose();
     _scoreSession?.dispose();
     PracticePrefs.instance.removeListener(_onPrefsChanged);
@@ -752,6 +829,8 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
 
   @override
   Widget build(BuildContext context) {
+    _syncShell();
+    final immersive = _immersive;
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: PracticePalette.ivory,
@@ -811,12 +890,17 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
             // SCORE
             // ─────────────────────────────────────────────
             Positioned.fill(
-              child: Padding(
+              child: AnimatedPadding(
+                duration: Motion.base,
+                curve: Motion.standard,
                 // Upright, the tools sit above and below the score, which
                 // uses nearly the whole width. Turned sideways (as many
                 // players hold a phone on a stand), they move to the sides
-                // and the score gets nearly the whole height.
-                padding: _landscape(context)
+                // and the score gets nearly the whole height. While playing
+                // along, the tools are away and the score has it all.
+                padding: immersive
+                    ? const EdgeInsets.all(Space.xxs)
+                    : _landscape(context)
                     ? const EdgeInsets.fromLTRB(76, Space.xxs, 76, Space.xxs)
                     : EdgeInsets.fromLTRB(
                         Space.sm,
@@ -880,36 +964,37 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
                         ),
 
                       // Small restrained ornament at the top of the score area.
-                      Positioned(
-                        top: 18,
-                        left: 0,
-                        right: 0,
-                        child: IgnorePointer(
-                          child: Center(
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _ornamentRule(),
-                                const SizedBox(width: Space.sm),
-                                Container(
-                                  width: 7,
-                                  height: 7,
-                                  decoration: BoxDecoration(
-                                    border: Border.all(
-                                      color: PracticePalette.gold.withValues(
-                                        alpha: 0.75,
+                      if (!immersive)
+                        Positioned(
+                          top: 18,
+                          left: 0,
+                          right: 0,
+                          child: IgnorePointer(
+                            child: Center(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _ornamentRule(),
+                                  const SizedBox(width: Space.sm),
+                                  Container(
+                                    width: 7,
+                                    height: 7,
+                                    decoration: BoxDecoration(
+                                      border: Border.all(
+                                        color: PracticePalette.gold.withValues(
+                                          alpha: 0.75,
+                                        ),
                                       ),
+                                      shape: BoxShape.circle,
                                     ),
-                                    shape: BoxShape.circle,
                                   ),
-                                ),
-                                const SizedBox(width: Space.sm),
-                                _ornamentRule(),
-                              ],
+                                  const SizedBox(width: Space.sm),
+                                  _ornamentRule(),
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
 
                       // Count-in before playing along with a score.
                       if (_scoreSession != null)
@@ -919,20 +1004,55 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
                           ),
                         ),
 
-                      // The latest phrase's verdict, one thin line.
-                      Positioned(
-                        top: Space.xs,
-                        left: Space.sm,
-                        right: Space.sm,
-                        child: IgnorePointer(
-                          child: Center(
-                            child: PhraseStrip(report: _latestReport),
+                      // Playing along: a tap pauses, a double tap finishes. A
+                      // drag still scrolls the score.
+                      if (immersive)
+                        Positioned.fill(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _recorder.pause,
+                            onDoubleTap: _recorder.finish,
+                            onVerticalDragUpdate: (d) =>
+                                _osmd.scrollBy(-d.delta.dy),
                           ),
                         ),
-                      ),
+                      if (immersive)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: Space.md,
+                          child: IgnorePointer(
+                            child: AnimatedOpacity(
+                              opacity: _showTapHint ? 1 : 0,
+                              duration: Motion.base,
+                              child: const Center(
+                                child: ScoreBanner(
+                                  icon: Icons.touch_app_rounded,
+                                  text: 'Tap to pause · double-tap to finish',
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                      // The latest phrase's verdict, one thin line.
+                      if (!immersive)
+                        Positioned(
+                          top: Space.xs,
+                          left: Space.sm,
+                          right: Space.sm,
+                          child: IgnorePointer(
+                            child: Center(
+                              child: PhraseStrip(report: _latestReport),
+                            ),
+                          ),
+                        ),
 
                       // Picking a note to start from, or where the next run starts.
-                      if (_picking || (_startFromId != null && !_isRecording))
+                      if (_picking ||
+                          (_startFromId != null &&
+                              !_isRecording &&
+                              !_reviewing))
                         Positioned(
                           top: 40,
                           left: 0,
@@ -954,7 +1074,46 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
                           ),
                         ),
 
-                      if (_exercise == null && _hasScore)
+                      // Paused: go on, or call it a day. Notes can be
+                      // drawn on the score meanwhile.
+                      if (_paused && _isRecording && !_picking)
+                        Positioned(
+                          top: 40,
+                          left: 0,
+                          right: 0,
+                          child: Center(
+                            child: ScoreActionBar(
+                              icon: Icons.pause_rounded,
+                              text: 'Paused',
+                              actions: [
+                                ('Go on', _recorder.resume),
+                                ('Finish', _recorder.finish),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                      // Looking back over the run just played.
+                      if (_reviewing && !_isRecording && _scoreSession != null)
+                        Positioned(
+                          top: 40,
+                          left: Space.sm,
+                          right: Space.sm,
+                          child: Center(
+                            child: RunReviewPanel(
+                              session: _scoreSession!,
+                              shown: _shownTimes,
+                              onShow: _showTime,
+                              onSummary: () => _openSummary(_scoreSession!),
+                              onClose: () => setState(() {
+                                _reviewing = false;
+                                _shownTimes.clear();
+                              }),
+                            ),
+                          ),
+                        ),
+
+                      if (_exercise == null && _hasScore && !immersive)
                         Positioned(
                           right: Space.sm,
                           bottom: Space.sm,
@@ -986,145 +1145,148 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
             // ─────────────────────────────────────────────
             // SETTINGS
             // ─────────────────────────────────────────────
-            Positioned(
-              top: 16,
-              left: 22,
-              child: Flex(
-                // Upright, along the top; sideways, down the left edge.
-                direction: _landscape(context)
-                    ? Axis.vertical
-                    : Axis.horizontal,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  PracticeToolButton(
-                    key: _settingsKey,
-                    icon: Icons.tune_rounded,
-                    active: false,
-                    color: PracticePalette.gold,
-                    onTap: () => _scaffoldKey.currentState?.openDrawer(),
-                  ),
-                  const SizedBox(width: Space.xs, height: Space.xs),
-                  PracticeToolButton(
-                    icon: Icons.search_rounded,
-                    active: false,
-                    color: PracticePalette.gold,
-                    onTap: _goToNavPage,
-                  ),
-                  // The colour key and the guide, once there is a score.
-                  if (_exercise == null && _hasScore) ...[
-                    const SizedBox(width: Space.xs, height: Space.xs),
+            if (!immersive)
+              Positioned(
+                top: 16,
+                left: 22,
+                child: Flex(
+                  // Upright, along the top; sideways, down the left edge.
+                  direction: _landscape(context)
+                      ? Axis.vertical
+                      : Axis.horizontal,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                     PracticeToolButton(
-                      key: _helpKey,
-                      icon: Icons.question_mark_rounded,
+                      key: _settingsKey,
+                      icon: Icons.tune_rounded,
                       active: false,
                       color: PracticePalette.gold,
-                      onTap: _openHelp,
+                      onTap: () => _scaffoldKey.currentState?.openDrawer(),
                     ),
+                    const SizedBox(width: Space.xs, height: Space.xs),
+                    PracticeToolButton(
+                      icon: Icons.search_rounded,
+                      active: false,
+                      color: PracticePalette.gold,
+                      onTap: _goToNavPage,
+                    ),
+                    // The colour key and the guide, once there is a score.
+                    if (_exercise == null && _hasScore) ...[
+                      const SizedBox(width: Space.xs, height: Space.xs),
+                      PracticeToolButton(
+                        key: _helpKey,
+                        icon: Icons.question_mark_rounded,
+                        active: false,
+                        color: PracticePalette.gold,
+                        onTap: _openHelp,
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
 
             // ─────────────────────────────────────────────
             // TOP RIGHT DRAWING TOOLS
             // ─────────────────────────────────────────────
-            Positioned(
-              top: 16,
-              right: 22,
-              child: Flex(
-                direction: _landscape(context)
-                    ? Axis.vertical
-                    : Axis.horizontal,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  PracticeToolButton(
-                    icon: Icons.edit_outlined,
-                    active: _isDrawingMode,
-                    color: PracticePalette.gold,
-                    onTap: () {
-                      _setPen(() {
-                        _isDrawingMode = !_isDrawingMode;
-                        if (_isDrawingMode) {
-                          _isErasing = false;
-                        }
-                      });
-                    },
-                  ),
-                  const SizedBox(width: Space.xs, height: Space.xs),
-                  AnimatedBuilder(
-                    animation: Listenable.merge([_drawing, _osmd.canUndoInk]),
-                    builder: (_, _) => PracticeToolButton(
-                      icon: Icons.undo_rounded,
-                      active: false,
+            if (!immersive)
+              Positioned(
+                top: 16,
+                right: 22,
+                child: Flex(
+                  direction: _landscape(context)
+                      ? Axis.vertical
+                      : Axis.horizontal,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    PracticeToolButton(
+                      icon: Icons.edit_outlined,
+                      active: _isDrawingMode,
                       color: PracticePalette.gold,
-                      enabled: _inkOnScore
-                          ? _osmd.canUndoInk.value
-                          : _drawing.canUndo,
-                      onTap: _inkOnScore ? _osmd.undoInk : _drawing.undo,
+                      onTap: () {
+                        _setPen(() {
+                          _isDrawingMode = !_isDrawingMode;
+                          if (_isDrawingMode) {
+                            _isErasing = false;
+                          }
+                        });
+                      },
                     ),
-                  ),
-                  const SizedBox(width: Space.xs, height: Space.xs),
-                  PracticeToolButton(
-                    icon: Icons.palette_outlined,
-                    active: _showPenSettings,
-                    color: PracticePalette.gold,
-                    onTap: () {
-                      setState(() {
-                        _showPenSettings = !_showPenSettings;
-                      });
-                    },
-                  ),
-                ],
+                    const SizedBox(width: Space.xs, height: Space.xs),
+                    AnimatedBuilder(
+                      animation: Listenable.merge([_drawing, _osmd.canUndoInk]),
+                      builder: (_, _) => PracticeToolButton(
+                        icon: Icons.undo_rounded,
+                        active: false,
+                        color: PracticePalette.gold,
+                        enabled: _inkOnScore
+                            ? _osmd.canUndoInk.value
+                            : _drawing.canUndo,
+                        onTap: _inkOnScore ? _osmd.undoInk : _drawing.undo,
+                      ),
+                    ),
+                    const SizedBox(width: Space.xs, height: Space.xs),
+                    PracticeToolButton(
+                      icon: Icons.palette_outlined,
+                      active: _showPenSettings,
+                      color: PracticePalette.gold,
+                      onTap: () {
+                        setState(() {
+                          _showPenSettings = !_showPenSettings;
+                        });
+                      },
+                    ),
+                  ],
+                ),
               ),
-            ),
 
             // ─────────────────────────────────────────────
             // PEN SETTINGS
             // ─────────────────────────────────────────────
-            Positioned(
-              top: _landscape(context) ? 16 : 68,
-              right: _landscape(context) ? 76 : 22,
-              // Scales and fades out of the palette button rather than
-              // appearing outright, so it reads as belonging to the
-              // control that opened it.
-              child: AnimatedScale(
-                scale: _showPenSettings ? 1 : 0.92,
-                duration: Motion.fast,
-                curve: Motion.enter,
-                alignment: Alignment.topRight,
-                child: AnimatedOpacity(
-                  opacity: _showPenSettings ? 1 : 0,
+            if (!immersive)
+              Positioned(
+                top: _landscape(context) ? 16 : 68,
+                right: _landscape(context) ? 76 : 22,
+                // Scales and fades out of the palette button rather than
+                // appearing outright, so it reads as belonging to the
+                // control that opened it.
+                child: AnimatedScale(
+                  scale: _showPenSettings ? 1 : 0.92,
                   duration: Motion.fast,
-                  child: IgnorePointer(
-                    ignoring: !_showPenSettings,
-                    child: PracticePenPanel(
-                      colors: PracticePalette.penColors,
-                      selectedColor: _penColor,
-                      penSize: _penSize,
-                      isErasing: _isErasing,
-                      onColorSelected: (color) {
-                        _setPen(() {
-                          _penColor = color;
-                          _isErasing = false;
-                          _isDrawingMode = true;
-                        });
-                      },
-                      onSizeChanged: (size) {
-                        _setPen(() {
-                          _penSize = size;
-                        });
-                      },
-                      onEraserToggled: () {
-                        _setPen(() {
-                          _isErasing = !_isErasing;
-                          if (_isErasing) _isDrawingMode = false;
-                        });
-                      },
+                  curve: Motion.enter,
+                  alignment: Alignment.topRight,
+                  child: AnimatedOpacity(
+                    opacity: _showPenSettings ? 1 : 0,
+                    duration: Motion.fast,
+                    child: IgnorePointer(
+                      ignoring: !_showPenSettings,
+                      child: PracticePenPanel(
+                        colors: PracticePalette.penColors,
+                        selectedColor: _penColor,
+                        penSize: _penSize,
+                        isErasing: _isErasing,
+                        onColorSelected: (color) {
+                          _setPen(() {
+                            _penColor = color;
+                            _isErasing = false;
+                            _isDrawingMode = true;
+                          });
+                        },
+                        onSizeChanged: (size) {
+                          _setPen(() {
+                            _penSize = size;
+                          });
+                        },
+                        onEraserToggled: () {
+                          _setPen(() {
+                            _isErasing = !_isErasing;
+                            if (_isErasing) _isDrawingMode = false;
+                          });
+                        },
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
 
             // The draggable control owns its own Rust-bridge notesStream()
             // recording pipeline; it reports UI toggle state here and, per
@@ -1140,12 +1302,13 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
               actionsEnabled: _exercise == null && _scoreSession != null,
               onAction: _onRecorderAction,
               onBeforeResume: _resumeScore,
+              hidden: immersive,
             ),
 
             // ─────────────────────────────────────────────
             // EXIT (only when pushed; inside the shell there is no "back")
             // ─────────────────────────────────────────────
-            if (!InShellPage.of(context))
+            if (!InShellPage.of(context) && !immersive)
               Positioned(
                 right: 22,
                 bottom: 20,

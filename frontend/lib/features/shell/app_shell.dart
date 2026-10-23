@@ -204,8 +204,9 @@ class _AppShellState extends State<AppShell>
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    // The bar steps aside for the keyboard rather than riding up on it.
-    final barVisible = media.viewInsets.bottom == 0;
+    // The bar steps aside for the keyboard rather than riding up on it, and
+    // for a page that wants the whole screen.
+    final barVisible = media.viewInsets.bottom == 0 && !_shell.immersive;
     final barHeight = DiskBar.heightFor(context);
     final index = _shell.index;
     final blocking = _drawerOpen || _tutorialStep != null;

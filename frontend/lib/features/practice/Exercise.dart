@@ -32,6 +32,13 @@ class ExpectedNote {
   /// held against the player.
   final bool grace;
 
+  /// The written bar it is in, counted from 0 (scores only). A bar a repeat
+  /// plays twice has the same [measure] both times.
+  final int? measure;
+
+  /// Which time through this bar is being played: 0 the first, 1 a repeat.
+  final int pass;
+
   const ExpectedNote({
     required this.noteId,
     required this.midi,
@@ -42,6 +49,8 @@ class ExpectedNote {
     required this.isEnd,
     this.printedBar,
     this.grace = false,
+    this.measure,
+    this.pass = 0,
   });
 
   double get endMs => startMs + durationMs;

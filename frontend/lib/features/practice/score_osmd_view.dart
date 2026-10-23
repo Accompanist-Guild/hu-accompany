@@ -150,8 +150,8 @@ class ScoreOsmdController {
   /// Shows what is happening as the score is played: how each note went
   /// (see `OSMDBridge.live` in osmd_viewer.html for how each verdict is
   /// drawn), the notes due now (they sway) and the notes just played (they
-  /// hop). Notes are timeline ids. [follow] keeps the next note in view while
-  /// a recording runs.
+  /// hop), and the start of a repeat. Notes are timeline ids. [follow] keeps
+  /// the next note in view while a recording runs.
   void live(LiveUpdate update, {bool? follow}) {
     final payload = jsonEncode({
       if (update.marks.isNotEmpty)
@@ -161,16 +161,21 @@ class ScoreOsmdController {
               'id': e.key,
               'r': e.value.result.name,
               'played': ?e.value.playedMidi,
-              'shift': ?e.value.offShare,
             },
         ],
       if (update.cleared.isNotEmpty) 'cleared': update.cleared,
       'due': ?update.due,
       if (update.played.isNotEmpty) 'played': update.played,
+      'repeat': ?update.repeat,
+      'showPass': ?update.showPass,
       'follow': ?follow,
     });
     _call('OSMDBridge.live($payload);');
   }
+
+  /// Scrolls the score by [dy] logical pixels (a drag on a layer above it).
+  void scrollBy(double dy) =>
+      _call('OSMDBridge.scrollBy(${dy.toStringAsFixed(1)});');
 
   /// Every note back as written, for a new run.
   void resetLive() => _call('OSMDBridge.resetLive();');

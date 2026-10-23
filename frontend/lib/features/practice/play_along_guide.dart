@@ -44,8 +44,7 @@ enum MarkKind {
   missed,
   early,
   late,
-  repeatOnce,
-  repeatTwice,
+  repeat,
   due,
   played,
 }
@@ -77,35 +76,17 @@ class NoteLegend extends StatefulWidget {
     _Entry(
       MarkKind.wrong,
       'Wrong key',
-      'The written note stays black; a hollow red note flashes where the key '
-          'you pressed would be written.',
+      'The note stays black; a small word under it says the key you '
+          'pressed.',
     ),
+    _Entry(MarkKind.missed, 'Missed', 'Not played.'),
+    _Entry(MarkKind.early, 'Early', 'The right key, too soon.'),
+    _Entry(MarkKind.late, 'Late', 'The right key, too late.'),
     _Entry(
-      MarkKind.missed,
-      'Missed',
-      'The whole note flashes red: not played.',
-    ),
-    _Entry(
-      MarkKind.early,
-      'Early',
-      'The note goes hollow; a hollow red note flashes to its left. The '
-          'further left, the earlier you were.',
-    ),
-    _Entry(
-      MarkKind.late,
-      'Late',
-      'Same, to the right: the further right, the later.',
-    ),
-    _Entry(
-      MarkKind.repeatOnce,
-      'Repeated bars',
-      'Notes you play more than once are outlined instead, filled a little '
-          'more each time through…',
-    ),
-    _Entry(
-      MarkKind.repeatTwice,
-      '…in the colour of the latest time',
-      'Full after the last time through.',
+      MarkKind.repeat,
+      'Repeats',
+      '"Repeat!" pops up; the bars go back to black and fill in again. The '
+          'summary keeps every time through.',
     ),
     _Entry(MarkKind.due, 'Up next', 'The notes to play now sway a little.'),
     _Entry(MarkKind.played, 'Heard', 'A note hops as the app hears it.'),
@@ -160,7 +141,7 @@ class _NoteLegendState extends State<NoteLegend>
                   AnimatedBuilder(
                     animation: _clock,
                     builder: (context, _) => CustomPaint(
-                      size: const Size(64, 40),
+                      size: const Size(64, 48),
                       painter: MarkSwatchPainter(
                         kind: e.kind,
                         colors: PracticePrefs.instance.colors,
@@ -217,8 +198,9 @@ class MarkSwatchPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final gap = size.height / 6; // staff space
-    final top = size.height / 2 - 2 * gap;
+    // A staff in the upper part, room under it for a word.
+    final gap = size.height / 8.7; // staff space
+    final top = gap * 2.2;
     final lines = Paint()
       ..color = _ink.withValues(alpha: 0.35)
       ..strokeWidth = 0.8;
@@ -229,8 +211,7 @@ class MarkSwatchPainter extends CustomPainter {
         lines,
       );
     }
-    // The note sits in the middle space; markers beside it.
-    final center = Offset(size.width / 2 - 6, size.height / 2 + gap / 2);
+    final center = Offset(size.width / 2 - 3, top + 2 * gap);
     final flash = 0.45 + 0.55 * (0.5 + 0.5 * math.cos(t * 2 * math.pi * 2));
 
     switch (kind) {
@@ -240,50 +221,29 @@ class MarkSwatchPainter extends CustomPainter {
         _note(canvas, center, gap, fill: colors.close);
       case MarkKind.wrong:
         _note(canvas, center, gap, fill: _ink);
-        _head(
-          canvas,
-          center.translate(gap * 2.2, gap / 2),
-          gap,
-          stroke: colors.wrong.withValues(alpha: flash),
-        );
+        _word(canvas, center, gap, 'D, not E', colors.wrong, flash);
       case MarkKind.missed:
-        _note(canvas, center, gap, fill: colors.wrong.withValues(alpha: flash));
+        _note(canvas, center, gap, fill: _ink);
+        _word(canvas, center, gap, 'missed', colors.wrong, flash);
       case MarkKind.early:
-        _note(canvas, center, gap, hollow: true);
-        _head(
-          canvas,
-          center.translate(-gap * 2.6, 0),
-          gap,
-          stroke: colors.wrong.withValues(alpha: flash),
-        );
+        _note(canvas, center, gap, fill: _ink);
+        _word(canvas, center, gap, 'early', colors.wrong, flash);
       case MarkKind.late:
-        _note(canvas, center, gap, hollow: true);
-        _head(
+        _note(canvas, center, gap, fill: _ink);
+        _word(canvas, center, gap, 'late', colors.wrong, flash);
+      case MarkKind.repeat:
+        _note(canvas, center.translate(-gap * 2, 0), gap, fill: colors.perfect);
+        _note(canvas, center.translate(gap * 2, -gap / 2), gap, fill: _ink);
+        _word(
           canvas,
-          center.translate(gap * 2.6, 0),
-          gap,
-          stroke: colors.wrong.withValues(alpha: flash),
+          Offset(size.width / 2, top - gap * 2.6),
+          0,
+          'Repeat!',
+          Color.lerp(colors.perfect, Colors.black, 0.32)!,
+          flash,
+          size: gap * 2.1,
+          arrow: false,
         );
-      case MarkKind.repeatOnce:
-        _head(
-          canvas,
-          center,
-          gap,
-          stroke: colors.perfect,
-          fillShare: 0.5,
-          fill: colors.perfect,
-        );
-        _stem(canvas, center, gap, _ink);
-      case MarkKind.repeatTwice:
-        _head(
-          canvas,
-          center,
-          gap,
-          stroke: colors.wrong,
-          fillShare: 1,
-          fill: colors.wrong,
-        );
-        _stem(canvas, center, gap, _ink);
       case MarkKind.due:
         canvas.save();
         final sway = math.sin(t * 2 * math.pi) * (t < 0.5 ? 0.09 : 0.0);
@@ -296,6 +256,61 @@ class MarkSwatchPainter extends CustomPainter {
         final hop = t < 0.35 ? math.sin(t / 0.35 * math.pi) * gap * 1.1 : 0.0;
         _note(canvas, center.translate(0, -hop), gap, fill: colors.perfect);
     }
+  }
+
+  /// A small word under the note at [c], with an arrow up to it, as the
+  /// score writes a mistake. It flashes for a moment there; here, always.
+  void _word(
+    Canvas canvas,
+    Offset c,
+    double gap,
+    String text,
+    Color color,
+    double flash, {
+    double? size,
+    bool arrow = true,
+  }) {
+    final paint = Paint()
+      ..color = color.withValues(alpha: flash)
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    var y = c.dy;
+    if (arrow) {
+      final from = c.dy + gap * 0.75, to = from + gap * 1.1;
+      canvas.drawLine(Offset(c.dx, from), Offset(c.dx, to), paint);
+      canvas.drawPath(
+        Path()
+          ..moveTo(c.dx - gap * 0.4, from + gap * 0.4)
+          ..lineTo(c.dx, from)
+          ..lineTo(c.dx + gap * 0.4, from + gap * 0.4),
+        paint,
+      );
+      y = to;
+    }
+    final style = TextStyle(
+      fontSize: size ?? gap * 1.75,
+      fontWeight: FontWeight.w700,
+      fontStyle: FontStyle.italic,
+      height: 1,
+    );
+    TextPainter painter(TextStyle style) => TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    // A paper edge, as on the score, so staff lines don't run through it.
+    final edge = painter(
+      style.copyWith(
+        foreground: Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.4
+          ..color = PracticePalette.paper,
+      ),
+    );
+    final fill = painter(style.copyWith(color: color.withValues(alpha: flash)));
+    final at = Offset(c.dx - fill.width / 2, y);
+    edge.paint(canvas, at);
+    fill.paint(canvas, at);
   }
 
   void _note(
@@ -390,14 +405,14 @@ class PlayAlongHelpSheet extends StatelessWidget {
   static const List<(IconData, String)> howTo = [
     (Icons.mic_rounded, 'Tap the mic, count in with the beats, then play.'),
     (
-      Icons.swipe_right_rounded,
-      'While playing, swipe right on the mic to pause, restart, or go on '
-          'from a note you pick.',
+      Icons.touch_app_rounded,
+      'While playing, tap the score to pause and double-tap to finish. '
+          'Paused, swipe right on the mic to restart or go on from a note.',
     ),
     (
-      Icons.touch_app_rounded,
-      'When you stop, tap a mistake in the summary to see it on the score, '
-          'or tap any marked note to see what happened.',
+      Icons.library_music_outlined,
+      'When you stop, "See it on the score" shows how each note went, and '
+          'each time through a repeat; tap any marked note for what happened.',
     ),
     (
       Icons.tune_rounded,
@@ -534,15 +549,14 @@ const List<GuideStep> playAlongGuide = [
   GuideStep(
     'Start and stop here',
     'Tap the mic. The first time, pick a tempo and which hands. After a '
-        'count-in, start on the first note. Tap again to stop. You can drag '
-        'it anywhere.',
+        'count-in, start on the first note. You can drag the mic anywhere.',
     target: GuideTarget.recorder,
   ),
   GuideStep(
-    'Pause, restart, or pick a note',
-    'While you play, swipe right on the mic: Pause to look around, Restart '
-        'from the top, or From a note to tap the note to go on from. Notes '
-        'before it keep their marks.',
+    'Tap to pause, double-tap to finish',
+    'While you play, the score has the whole screen. Tap it once to pause '
+        '(to look around or write on it), twice to finish. When paused, '
+        'swipe right on the mic to Restart, or pick a note to go on from.',
     target: GuideTarget.recorder,
   ),
   GuideStep(
@@ -553,16 +567,18 @@ const List<GuideStep> playAlongGuide = [
   ),
   GuideStep(
     'Repeats, and what to play next',
-    'Bars you play twice are outlined and fill up each time. The notes to '
-        'play now sway; a note hops when it\'s heard.',
+    'When a repeat starts, "Repeat!" pops up and those bars go back to '
+        'black to fill in again. The notes to play now sway; a note hops '
+        'when it\'s heard.',
     target: GuideTarget.score,
     legend: true,
     fullLegend: true,
   ),
   GuideStep(
     'After you play',
-    'You\'ll get your score and every mistake. Tap a mistake to see it on '
-        'the score, or tap any marked note to see what happened to it.',
+    'You\'ll get your score and every mistake, a repeat with each time '
+        'through. "See it on the score" shows the run there; tap any marked '
+        'note to see what happened to it.',
     target: GuideTarget.score,
   ),
   GuideStep(

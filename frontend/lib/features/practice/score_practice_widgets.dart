@@ -258,14 +258,27 @@ class ZoomButtons extends StatelessWidget {
   }
 }
 
-/// After a run: the score, how the notes went, and every mistake. Tapping a
-/// mistake closes the sheet and returns its note id, for the score to show.
+/// What the player chose in the summary.
+class SummaryChoice {
+  /// A mistake to look at on the score, by note id; null to look over the
+  /// whole run there.
+  final int? note;
+  const SummaryChoice.note(int this.note);
+  const SummaryChoice.review() : note = null;
+}
+
+/// After a run: the score, how the notes went, and every mistake, by section
+/// of the piece. A section a repeat plays twice folds open to show each time
+/// through. Tapping a mistake, or "See it on the score", closes the sheet.
 class ScoreSummarySheet extends StatelessWidget {
   final ScorePracticeSession session;
   const ScoreSummarySheet({super.key, required this.session});
 
-  static Future<int?> show(BuildContext context, ScorePracticeSession session) {
-    return showModalBottomSheet<int>(
+  static Future<SummaryChoice?> show(
+    BuildContext context,
+    ScorePracticeSession session,
+  ) {
+    return showModalBottomSheet<SummaryChoice>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -277,15 +290,9 @@ class ScoreSummarySheet extends StatelessWidget {
     );
   }
 
-  /// 0-100 for the run: the backend's phrases when it judged any, otherwise
-  /// the notes heard (a little off counts three quarters).
+  /// 0-100 for what was played: perfect notes count fully, a little off
+  /// three quarters, mistakes nothing. Notes not reached don't count.
   static int score(ScorePracticeSession session) {
-    final reports = session.reports;
-    if (reports.isNotEmpty) {
-      return (reports.map((r) => r.scores.overall).reduce((a, b) => a + b) /
-              reports.length)
-          .round();
-    }
     final c = session.judge.counts;
     final total = c.values.fold(0, (a, b) => a + b);
     if (total == 0) return 0;
@@ -306,15 +313,25 @@ class ScoreSummarySheet extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(
+    // The server's verdicts keep arriving after the run ends.
+    listenable: session,
+    builder: (context, _) => _build(context),
+  );
+
+  Widget _build(BuildContext context) {
     final judge = session.judge;
     final counts = judge.counts;
-    final mistakes = [
-      for (final n in judge.notes)
-        if (judge.marks[n.noteId]?.result.isMistake ?? false) n,
+    bool isMistake(int id) => judge.marks[id]?.result.isMistake ?? false;
+    bool reached(List<int> ids) => ids.any(judge.marks.containsKey);
+    final sections = [
+      for (final s in judge.sections)
+        if (s.times.any(reached)) s,
     ];
     final colors = PracticePrefs.instance.colors;
-    final mistakeCount = mistakes.length;
+    final mistakeCount = judge.marks.values
+        .where((v) => v.result.isMistake)
+        .length;
     final total = counts.values.fold(0, (a, b) => a + b);
 
     return DraggableScrollableSheet(
@@ -378,11 +395,34 @@ class ScoreSummarySheet extends StatelessWidget {
               _count(colors.wrong, 'Mistakes', mistakeCount),
             ],
           ),
+          if (total > 0) ...[
+            const SizedBox(height: Space.md),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () =>
+                    Navigator.pop(context, const SummaryChoice.review()),
+                icon: const Icon(Icons.library_music_outlined, size: 18),
+                label: const Text('See it on the score'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: PracticePalette.brown,
+                  foregroundColor: PracticePalette.paper,
+                  shape: const StadiumBorder(),
+                  padding: const EdgeInsets.symmetric(vertical: Space.sm),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: Space.lg),
-          if (mistakes.isEmpty)
-            const Text(
-              'No mistakes. Try it a little faster next time.',
-              style: TextStyle(color: PracticePalette.brown, fontSize: 14),
+          if (mistakeCount == 0)
+            Text(
+              total == 0
+                  ? 'Play along with the score and your run shows up here.'
+                  : 'No mistakes. Try it a little faster next time.',
+              style: const TextStyle(
+                color: PracticePalette.brown,
+                fontSize: 14,
+              ),
             )
           else ...[
             const Text(
@@ -390,7 +430,90 @@ class ScoreSummarySheet extends StatelessWidget {
               style: TextStyle(color: PracticePalette.mutedBrown, fontSize: 12),
             ),
             const SizedBox(height: Space.xs),
-            for (final n in mistakes) _mistakeRow(context, n.noteId, colors),
+            for (final section in sections)
+              if (section.repeated)
+                _repeatedSection(context, section, isMistake, reached, colors)
+              else if (section.times.first.any(isMistake)) ...[
+                if (sections.length > 1) _sectionHeading(section.bars),
+                for (final id in section.times.first)
+                  if (isMistake(id)) _mistakeRow(context, id, colors),
+              ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionHeading(String text) => Padding(
+    padding: const EdgeInsets.only(top: Space.sm, bottom: Space.xxs),
+    child: Text(
+      text.toUpperCase(),
+      style: const TextStyle(
+        color: PracticePalette.gold,
+        fontSize: 11,
+        letterSpacing: 1.6,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
+
+  /// A section played more than once: folded, with how each time went;
+  /// open, each time's mistakes.
+  Widget _repeatedSection(
+    BuildContext context,
+    ScoreSection section,
+    bool Function(int id) isMistake,
+    bool Function(List<int> ids) reached,
+    NoteColors colors,
+  ) {
+    final times = [
+      for (var i = 0; i < section.times.length; i++)
+        if (reached(section.times[i])) i,
+    ];
+    String howMany(int i) {
+      final n = section.times[i].where(isMistake).length;
+      return n == 0 ? 'clean' : '$n ${n == 1 ? 'mistake' : 'mistakes'}';
+    }
+
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        key: PageStorageKey('section-${section.firstBar}'),
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(left: Space.sm),
+        iconColor: PracticePalette.gold,
+        collapsedIconColor: PracticePalette.gold,
+        title: Text(
+          '${section.bars} · played ${section.times.length} times',
+          style: const TextStyle(
+            color: PracticePalette.brown,
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        subtitle: Text(
+          [
+            for (final i in times) '${ScoreSection.timeName(i)}: ${howMany(i)}',
+          ].join(' · '),
+          style: const TextStyle(
+            color: PracticePalette.mutedBrown,
+            fontSize: 12,
+          ),
+        ),
+        children: [
+          for (final i in times) ...[
+            _sectionHeading(ScoreSection.timeName(i)),
+            if (!section.times[i].any(isMistake))
+              const Padding(
+                padding: EdgeInsets.only(bottom: Space.xs),
+                child: Text(
+                  'No mistakes',
+                  style: TextStyle(color: PracticePalette.brown, fontSize: 13),
+                ),
+              )
+            else
+              for (final id in section.times[i])
+                if (isMistake(id)) _mistakeRow(context, id, colors),
           ],
         ],
       ),
@@ -422,7 +545,7 @@ class ScoreSummarySheet extends StatelessWidget {
     final verdict = session.judge.marks[id]!;
     final tip = tipFor(session, id);
     return InkWell(
-      onTap: () => Navigator.pop(context, id),
+      onTap: () => Navigator.pop(context, SummaryChoice.note(id)),
       borderRadius: Radii.cardRadius,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: Space.xs),
@@ -472,6 +595,194 @@ class ScoreSummarySheet extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// A pill with a few text actions, over the score (a paused run, a run
+/// being looked over).
+class ScoreActionBar extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final List<(String, VoidCallback)> actions;
+
+  const ScoreActionBar({
+    super.key,
+    required this.icon,
+    required this.text,
+    required this.actions,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(Space.sm, 2, 2, 2),
+      decoration: BoxDecoration(
+        color: PracticePalette.brown.withValues(alpha: 0.9),
+        borderRadius: Radii.pillRadius,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: PracticePalette.paper),
+          const SizedBox(width: Space.xs),
+          Text(
+            text,
+            style: const TextStyle(
+              color: PracticePalette.paper,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: Space.xxs),
+          for (final (label, onTap) in actions)
+            TextButton(
+              onPressed: onTap,
+              style: TextButton.styleFrom(
+                foregroundColor: PracticePalette.lightGold,
+                padding: const EdgeInsets.symmetric(horizontal: Space.sm),
+                minimumSize: const Size(0, 34),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                textStyle: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              child: Text(label),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Looking back over a finished run on the score. For each section a repeat
+/// plays more than once, which time through is showing; folded away until
+/// asked for.
+class RunReviewPanel extends StatefulWidget {
+  final ScorePracticeSession session;
+
+  /// Section (index into [LiveJudge.sections]) -> the time through showing.
+  final Map<int, int> shown;
+  final void Function(int section, int time) onShow;
+  final VoidCallback onSummary;
+  final VoidCallback onClose;
+
+  const RunReviewPanel({
+    super.key,
+    required this.session,
+    required this.shown,
+    required this.onShow,
+    required this.onSummary,
+    required this.onClose,
+  });
+
+  /// The sections played more than once this run, by index, with the times
+  /// through that were reached.
+  static Map<int, List<int>> repeats(ScorePracticeSession session) {
+    final judge = session.judge;
+    final out = <int, List<int>>{};
+    for (var s = 0; s < judge.sections.length; s++) {
+      final section = judge.sections[s];
+      final reached = [
+        for (var t = 0; t < section.times.length; t++)
+          if (section.times[t].any(judge.marks.containsKey)) t,
+      ];
+      if (reached.length > 1) out[s] = reached;
+    }
+    return out;
+  }
+
+  @override
+  State<RunReviewPanel> createState() => _RunReviewPanelState();
+}
+
+class _RunReviewPanelState extends State<RunReviewPanel> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final repeats = RunReviewPanel.repeats(widget.session);
+    final sections = widget.session.judge.sections;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ScoreActionBar(
+          icon: Icons.library_music_outlined,
+          text: 'Your run',
+          actions: [
+            if (repeats.isNotEmpty)
+              (
+                _open ? 'Hide repeats' : 'Repeats',
+                () => setState(() => _open = !_open),
+              ),
+            ('Summary', widget.onSummary),
+            ('Done', widget.onClose),
+          ],
+        ),
+        AnimatedSize(
+          duration: Motion.base,
+          curve: Motion.standard,
+          alignment: Alignment.topCenter,
+          child: !_open || repeats.isEmpty
+              ? const SizedBox(width: double.infinity)
+              : Container(
+                  margin: const EdgeInsets.only(top: Space.xs),
+                  padding: const EdgeInsets.all(Space.sm),
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  decoration: BoxDecoration(
+                    color: PracticePalette.paper.withValues(alpha: 0.97),
+                    borderRadius: Radii.cardRadius,
+                    border: Border.all(color: PracticePalette.lightGold),
+                    boxShadow: Elevations.overlay(PracticePalette.brown),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final MapEntry(key: s, value: times)
+                          in repeats.entries)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  sections[s].bars,
+                                  style: const TextStyle(
+                                    color: PracticePalette.brown,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              for (final t in times)
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    left: Space.xxs,
+                                  ),
+                                  child: ChoiceChip(
+                                    label: Text(ScoreSection.timeName(t)),
+                                    selected:
+                                        (widget.shown[s] ?? times.last) == t,
+                                    onSelected: (_) => widget.onShow(s, t),
+                                    showCheckmark: false,
+                                    visualDensity: VisualDensity.compact,
+                                    labelStyle: const TextStyle(fontSize: 12),
+                                    selectedColor: PracticePalette.lightGold,
+                                    side: const BorderSide(
+                                      color: PracticePalette.lightGold,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+        ),
+      ],
     );
   }
 }
