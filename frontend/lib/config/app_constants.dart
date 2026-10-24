@@ -4,10 +4,10 @@
 ///
 ///   flutter build ios --dart-define=PRIVACY_POLICY_URL=https://example.org/privacy
 ///
-/// The defaults are placeholders on a reserved `.example` domain, which
-/// never resolves. Replace them with the real pages before submitting.
+/// The pages default to the deployed server's own (`$serverUrl/privacy`), which the server really serves, or
+/// to accompanist.app when the build has no server address. Set them to the website's pages once it is up.
 abstract final class AppConstants {
-  static const String appName = 'Hu Accomponist';
+  static const String appName = 'Accompanist';
 
   /// Whether people must sign in before using the app. Off for now: nothing
   /// in the app needs an account (your shelf and songs live on the phone, and
@@ -40,18 +40,22 @@ abstract final class AppConstants {
 
   static const String privacyPolicyUrl = String.fromEnvironment(
     'PRIVACY_POLICY_URL',
-    defaultValue: 'https://hu-accompany.example/privacy',
+    defaultValue: serverUrl == ''
+        ? 'https://accompanist.app/privacy'
+        : '$serverUrl/privacy',
   );
 
   static const String termsOfServiceUrl = String.fromEnvironment(
     'TERMS_OF_SERVICE_URL',
-    defaultValue: 'https://hu-accompany.example/terms',
+    defaultValue: serverUrl == ''
+        ? 'https://accompanist.app/terms'
+        : '$serverUrl/terms',
   );
 
   /// Support and feedback, and where data requests (export, deletion
   /// questions) are sent.
   static const String supportEmail = String.fromEnvironment(
     'SUPPORT_EMAIL',
-    defaultValue: 'support@hu-accompany.example',
+    defaultValue: 'support@accompanist.app',
   );
 }

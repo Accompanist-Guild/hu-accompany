@@ -91,8 +91,8 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          dmg="HuAccomponist-$VERSION-macos.dmg"
-          scripts/package_macos_dmg.sh frontend/build/macos/Build/Products/Release/hu_accomponist.app "$dmg"
+          dmg="Accompanist-$VERSION-macos.dmg"
+          scripts/package_macos_dmg.sh frontend/build/macos/Build/Products/Release/Accompanist.app "$dmg"
           echo "dmg=$dmg" >> "$GITHUB_OUTPUT"
 
       - name: Check the packaged app
@@ -100,12 +100,12 @@ jobs:
           DMG: ${{ steps.package.outputs.dmg }}
         run: |
           mount="$(hdiutil attach -nobrowse -readonly "$DMG" | tail -1 | awk -F'\t' '{print $NF}')"
-          app="$mount/hu_accomponist.app"
+          app="$mount/Accompanist.app"
 
           # Cheap, exact checks first: signature intact, both Mac CPU types present, and the microphone permission
           # reached the signed app (without it, recording fails silently in the sandbox).
           codesign --verify --deep --strict "$app"
-          archs="$(lipo -archs "$app/Contents/MacOS/hu_accomponist")"
+          archs="$(lipo -archs "$app/Contents/MacOS/Accompanist")"
           case "$archs" in *arm64*x86_64*|*x86_64*arm64*) ;; *) echo "::error::Not a universal build: $archs"; exit 1 ;; esac
           codesign -d --entitlements - "$app" 2>&1 | grep -q 'com.apple.security.device.audio-input' \
             || { echo "::error::Microphone entitlement missing from the built app"; exit 1; }
@@ -114,7 +114,7 @@ jobs:
           # Then start it, make sure it is still running a few seconds later, and that it found the Rust audio
           # engine (the app logs "rust: bridge initialized" when it does, "bridge unavailable" when it doesn't).
           log="$RUNNER_TEMP/app.log"
-          "$app/Contents/MacOS/hu_accomponist" > "$log" 2>&1 &
+          "$app/Contents/MacOS/Accompanist" > "$log" 2>&1 &
           pid=$!
           sleep 10
           if ! kill -0 "$pid" 2>/dev/null; then
@@ -129,7 +129,7 @@ jobs:
       - name: Keep the files on the run page
         uses: actions/upload-artifact@v7
         with:
-          name: HuAccomponist-macos
+          name: Accompanist-macos
           path: |
             ${{ steps.package.outputs.dmg }}
             ${{ steps.package.outputs.dmg }}.sha256
@@ -146,7 +146,7 @@ jobs:
             gh release upload "$TAG" "$DMG" "$DMG.sha256" --clobber
           else
             gh release create "$TAG" "$DMG" "$DMG.sha256" \
-              --title "Hu Accomponist $TAG" \
+              --title "Accompanist $TAG" \
               --notes-file .github/release-notes-macos.md \
               --generate-notes
           fi

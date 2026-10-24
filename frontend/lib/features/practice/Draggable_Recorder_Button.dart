@@ -10,6 +10,7 @@ import 'package:hu_accomponist/src/rust/models.dart';
 import 'package:hu_accomponist/src/rust/api.dart';
 import 'package:hu_accomponist/integrations/audio/Audio_Native.dart';
 import 'package:hu_accomponist/integrations/audio/Rust_Bridge.dart';
+import 'package:hu_accomponist/integrations/audio/Rust_Session.dart';
 
 /// What the buttons that swipe out of the recorder do (see
 /// [Draggable_Recorder_Button.actionsEnabled]).
@@ -37,7 +38,13 @@ class RecorderController {
 
   /// Pauses the recording, as the Pause button does.
   Future<void> pause() async {
-    if (isRecording) await _state?._act(RecorderAction.pause);
+    debugPrint(
+      '[Diagnostics] recorder: pause asked (recording=$isRecording, '
+      'starting=${_state?._starting})',
+    );
+    final state = _state;
+    if (state == null || !state._isRecording) return;
+    await state._act(RecorderAction.pause);
   }
 
   /// Ends the recording (running or paused), as tapping the button does.
@@ -117,6 +124,10 @@ class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
 
   /// Stopped listening part-way through, to go on later.
   bool _paused = false;
+
+  /// A pause still being carried out (the last notes coming in, the
+  /// screen told). Going on waits for it, or the pause would land after.
+  Future<void>? _pausing;
 
   /// The swiped-out action buttons are showing.
   bool _fanOpen = false;
@@ -257,7 +268,7 @@ class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
     // whatever Rust could not send ends up there instead.
     AudioNative().end();
     try {
-      await getUserData();
+      await getUserData().timeout(RustSession.stopWait);
     } catch (error) {
       debugPrint('[Diagnostics] waiting for the last notes failed: $error');
     }
@@ -362,7 +373,9 @@ class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
   }
 
   Future<void> _resume() async {
-    if (!_paused || _starting) return;
+    final pausing = _pausing;
+    if (pausing != null) await pausing;
+    if (!mounted || !_paused || _starting) return;
     await _listen(widget.onBeforeResume);
   }
 
@@ -376,16 +389,23 @@ class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
       widget.onToggle(false);
       return;
     }
+    if (action != RecorderAction.restart) {
+      final pausing = _pausing = () async {
+        await _pause();
+        if (mounted && onAction != null) await onAction(action);
+      }();
+      try {
+        await pausing;
+      } finally {
+        if (identical(_pausing, pausing)) _pausing = null;
+      }
+      return;
+    }
+    // Restart: stop, then get ready and listen again.
     await _pause();
     if (!mounted || onAction == null) return;
-    switch (action) {
-      case RecorderAction.pause:
-      case RecorderAction.fromNote:
-        await onAction(action);
-      case RecorderAction.restart:
-        if (await _listen(() => onAction(RecorderAction.restart))) {
-          _elapsed.value = Duration.zero;
-        }
+    if (await _listen(() => onAction(RecorderAction.restart))) {
+      _elapsed.value = Duration.zero;
     }
   }
 

@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -63,6 +65,10 @@ class ScoreOsmdController {
 
   /// A note was tapped while picking a place to start ([setPicking]).
   void Function(List<int> ids)? onNotePick;
+
+  /// While [setImmersive] is on: a click or tap on the page ([count] 1) or a
+  /// double one (2).
+  void Function(int count)? onScreenTap;
 
   /// The ink the next loaded score starts with (see [setInk]).
   String _inkJson = '[]';
@@ -174,6 +180,10 @@ class ScoreOsmdController {
   }
 
   /// Scrolls the score by [dy] logical pixels (a drag on a layer above it).
+  /// While on, clicks on the page are reported through [onScreenTap]
+  /// instead of as note taps (playing along: one pauses, two finish).
+  void setImmersive(bool on) => _call('OSMDBridge.setImmersive($on);');
+
   void scrollBy(double dy) =>
       _call('OSMDBridge.scrollBy(${dy.toStringAsFixed(1)});');
 
@@ -232,9 +242,12 @@ class _ScoreOsmdViewState extends State<ScoreOsmdView> {
   }
 
   WebViewController _buildWebViewController() {
-    _web = WebViewController()
+    _web = WebViewController();
+    // macOS web views can't be made transparent: the call throws, and the
+    // page would never load. The page paints its own paper there.
+    if (!Platform.isMacOS) _web.setBackgroundColor(const Color(0x00000000));
+    _web
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0x00000000))
       ..addJavaScriptChannel(
         'FlutterBridge',
         onMessageReceived: _onBridgeMessage,
@@ -282,6 +295,13 @@ class _ScoreOsmdViewState extends State<ScoreOsmdView> {
       case 'bridgeReady':
         // window.OSMDBridge now exists — safe to flush queued calls and
         // kick off the very first loadScore.
+        if (Platform.isMacOS) {
+          // Not transparent there (see above): white would show around the
+          // music, so it gets the card's paper instead.
+          _web.runJavaScript(
+            "document.documentElement.style.background = '#FFFCF4';",
+          );
+        }
         widget.controller.onBridgeReady();
         widget.controller.loadScore(widget.musicXml);
         break;
@@ -301,6 +321,10 @@ class _ScoreOsmdViewState extends State<ScoreOsmdView> {
           '${timeline.bpm} bpm, ${timeline.timeSignature}',
         );
         widget.controller.onTimeline?.call(timeline);
+        break;
+      case 'screenTap':
+        final count = (data['payload']?['count'] as num?)?.toInt() ?? 1;
+        widget.controller.onScreenTap?.call(count);
         break;
       case 'noteTap':
       case 'notePick':

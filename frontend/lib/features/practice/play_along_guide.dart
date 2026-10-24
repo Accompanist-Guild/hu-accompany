@@ -88,8 +88,12 @@ class NoteLegend extends StatefulWidget {
       '"Repeat!" pops up; the bars go back to black and fill in again. The '
           'summary keeps every time through.',
     ),
-    _Entry(MarkKind.due, 'Up next', 'The notes to play now sway a little.'),
-    _Entry(MarkKind.played, 'Heard', 'A note hops as the app hears it.'),
+    _Entry(MarkKind.due, 'Up next', 'The notes to play now keep jumping.'),
+    _Entry(
+      MarkKind.played,
+      'Heard',
+      'A note stops jumping and takes its colour.',
+    ),
   ];
 
   @override
@@ -185,7 +189,7 @@ class MarkSwatchPainter extends CustomPainter {
   final MarkKind kind;
   final NoteColors colors;
 
-  /// 0..1, looping: drives flashing, swaying and hopping.
+  /// 0..1, looping: drives flashing and jumping.
   final double t;
 
   const MarkSwatchPainter({
@@ -245,16 +249,14 @@ class MarkSwatchPainter extends CustomPainter {
           arrow: false,
         );
       case MarkKind.due:
-        canvas.save();
-        final sway = math.sin(t * 2 * math.pi) * (t < 0.5 ? 0.09 : 0.0);
-        canvas.translate(center.dx, center.dy);
-        canvas.rotate(sway);
-        canvas.translate(-center.dx, -center.dy);
-        _note(canvas, center, gap, fill: _ink);
-        canvas.restore();
+        // Two hops a loop, as the score's due notes keep jumping.
+        final phase = (t * 2) % 1;
+        final hop = phase < 0.4
+            ? math.sin(phase / 0.4 * math.pi) * gap * 1.1
+            : 0.0;
+        _note(canvas, center.translate(0, -hop), gap, fill: _ink);
       case MarkKind.played:
-        final hop = t < 0.35 ? math.sin(t / 0.35 * math.pi) * gap * 1.1 : 0.0;
-        _note(canvas, center.translate(0, -hop), gap, fill: colors.perfect);
+        _note(canvas, center, gap, fill: colors.perfect);
     }
   }
 
@@ -568,8 +570,8 @@ const List<GuideStep> playAlongGuide = [
   GuideStep(
     'Repeats, and what to play next',
     'When a repeat starts, "Repeat!" pops up and those bars go back to '
-        'black to fill in again. The notes to play now sway; a note hops '
-        'when it\'s heard.',
+        'black to fill in again. The notes to play now jump until you play '
+        'them.',
     target: GuideTarget.score,
     legend: true,
     fullLegend: true,

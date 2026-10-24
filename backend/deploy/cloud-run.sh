@@ -61,9 +61,12 @@ run gcloud run services update "$SERVICE" --region "$REGION" --project "$PROJECT
 
 if [ -n "${BILLING_ACCOUNT:-}" ]; then
   echo "== 5. Budget alert =="
+  # A budget must be in the billing account's own currency (and names the project by number).
+  CURRENCY="$(gcloud billing accounts describe "$BILLING_ACCOUNT" --format 'value(currencyCode)' 2>/dev/null || echo USD)"
+  PROJECT_NUMBER="$(gcloud projects describe "$PROJECT" --format 'value(projectNumber)' 2>/dev/null || echo "$PROJECT")"
   run gcloud billing budgets create --billing-account "$BILLING_ACCOUNT" \
-    --display-name "${SERVICE} monthly budget" --budget-amount "${BUDGET_USD:-30}USD" \
-    --filter-projects "projects/${PROJECT}" \
+    --display-name "${SERVICE} monthly budget" --budget-amount "${BUDGET_USD:-30}${CURRENCY:-USD}" \
+    --filter-projects "projects/${PROJECT_NUMBER}" \
     --threshold-rule percent=0.5 --threshold-rule percent=0.9 --threshold-rule percent=1.0
 else
   echo "== 5. Budget alert skipped: set BILLING_ACCOUNT (and optionally BUDGET_USD) to create one =="

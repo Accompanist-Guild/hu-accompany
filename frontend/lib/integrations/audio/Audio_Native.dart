@@ -30,9 +30,11 @@ class AudioProblem {
 /// `audio_error_message` are marked `#[frb(ignore)]` and exported as plain C
 /// symbols, which ios/recording_bridge.c re-exports under the stable names
 /// `start_recording` / `stop_recording` / `recording_status` /
-/// `recording_message`. So src/rust/api.dart has no start/stop function to
-/// call — it only exposes initSession, getUserData and notesStream — and
-/// capture has to be driven through here.
+/// `recording_message`. The macOS build has no such file: there the engine
+/// is its own framework (rust_builder), so its own names are used. Either
+/// way src/rust/api.dart has no start/stop function to call — it only
+/// exposes initSession, getUserData and notesStream — and capture has to be
+/// driven through here.
 ///
 /// Lookup failure is survivable by design. The native library is not
 /// currently linked into every target, and a missing symbol must not take
@@ -77,6 +79,10 @@ class AudioNative {
 
   void _init() {
     try {
+      if (Platform.isMacOS) {
+        _bindEngine();
+        return;
+      }
       final library = ffi.DynamicLibrary.process();
       _startRecording = library
           .lookup<ffi.NativeFunction<ffi.Int32 Function()>>('start_recording')
@@ -106,6 +112,47 @@ class AudioNative {
     }
   }
 
+  /// The engine's own entry points (see native_ffi/src/lib.rs), from the
+  /// framework flutter_rust_bridge has already loaded, or loaded here.
+  void _bindEngine() {
+    const stem = 'rust_lib_hu_accomponist';
+    var library = ffi.DynamicLibrary.process();
+    if (!library.providesSymbol('listen_audio')) {
+      library = ffi.DynamicLibrary.open('$stem.framework/$stem');
+    }
+    _startRecording = library
+        .lookup<ffi.NativeFunction<ffi.Int32 Function()>>('listen_audio')
+        .asFunction<int Function()>();
+    _stopRecording = library
+        .lookup<ffi.NativeFunction<ffi.Void Function()>>('stop_audio')
+        .asFunction<void Function()>();
+    _recordingStatus = library
+        .lookup<ffi.NativeFunction<ffi.Int32 Function()>>('audio_status')
+        .asFunction<int Function()>();
+    final copyMessage = library
+        .lookupFunction<
+          ffi.Size Function(ffi.Pointer<ffi.Uint8>, ffi.Size),
+          int Function(ffi.Pointer<ffi.Uint8>, int)
+        >('audio_error_message');
+    // One buffer for the message, kept for the life of the app (what
+    // recording_bridge.c's static buffer is on iOS).
+    final malloc = ffi.DynamicLibrary.process()
+        .lookupFunction<
+          ffi.Pointer<ffi.Uint8> Function(ffi.Size),
+          ffi.Pointer<ffi.Uint8> Function(int)
+        >('malloc');
+    final buffer = malloc(_messageCapacity);
+    _recordingMessage = () {
+      if (buffer == ffi.nullptr) return ffi.nullptr;
+      copyMessage(buffer, _messageCapacity);
+      return buffer;
+    };
+    isConnected = true;
+    debugPrint('[Diagnostics] audio: engine connected (macOS).');
+  }
+
+  static const int _messageCapacity = 256;
+
   /// Asks for microphone permission (the system prompt appears the first
   /// time) and sets the audio session up for recording. Call it before
   /// anything else of a recording, so the prompt does not land in the middle
@@ -116,7 +163,7 @@ class AudioNative {
       final result = await _session.invokeMethod<String>('prepare');
       if (result == 'granted') return null;
       return 'Microphone access is off for this app. Turn it on in '
-          'Settings, under Hu Accomponist.';
+          'Settings, under Accompanist.';
     } on PlatformException catch (e) {
       return 'Could not set up audio recording: ${e.message}';
     } on MissingPluginException {

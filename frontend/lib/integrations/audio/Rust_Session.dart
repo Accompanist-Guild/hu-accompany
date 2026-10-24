@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -38,17 +39,30 @@ abstract final class RustSession {
   /// Entries Rust gathered but has not sent. Rust only sends when a note
   /// ends, so a note still sounding when recording stops would otherwise be
   /// lost.
+  /// How long a stop waits for the engine's last notes.
+  static const Duration stopWait = Duration(seconds: 2);
+
   static Future<List<Notes>> leftovers() async {
     if (!RustBridge.isAvailable) return const [];
     try {
-      final decoded = jsonDecode(await getUserData());
+      // Bounded: on macOS the call has been seen never to return, and a
+      // pause must not hang on it. Notes still sounding are lost then.
+      final decoded = jsonDecode(await getUserData().timeout(stopWait));
       if (decoded is! List) return const [];
       final notes = decoded
           .whereType<Map<String, dynamic>>()
           .map(notesFromJson)
           .toList();
-      debugPrint('[Diagnostics] rust: ${notes.length} unsent entr(ies) at stop');
+      debugPrint(
+        '[Diagnostics] rust: ${notes.length} unsent entr(ies) at stop',
+      );
       return notes;
+    } on TimeoutException {
+      debugPrint(
+        '[Diagnostics] rust: no answer for the unsent notes in '
+        '${stopWait.inMilliseconds} ms; going on without them',
+      );
+      return const [];
     } catch (e) {
       debugPrint('[Diagnostics] rust: could not read leftover notes — $e');
       return const [];

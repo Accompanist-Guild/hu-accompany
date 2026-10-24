@@ -26,7 +26,7 @@ ditto "$app" "$staging/$(basename "$app")"
 ln -s /Applications "$staging/Applications"
 
 rm -f "$dmg"
-hdiutil create -quiet -volname "Hu Accomponist" -srcfolder "$staging" -format UDZO -ov "$dmg"
+hdiutil create -quiet -volname "Accompanist" -srcfolder "$staging" -format UDZO -ov "$dmg"
 
 # Run from the dmg's own folder so the checksum file holds a bare file name and `shasum -c` works wherever
 # the two files are downloaded to.

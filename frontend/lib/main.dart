@@ -265,6 +265,7 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
   }
 
   void _onRecordingChanged(bool isRecording) {
+    debugPrint('[Diagnostics] recording: $isRecording');
     if (mounted) {
       setState(() {
         _isRecording = isRecording;
@@ -403,6 +404,10 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
 
   // Swaps in a new score, or clears it if [selected] is null.
   void _setScore(LoadedScore? selected) {
+    // A run of the old score can't go on with the new one: stop listening.
+    if (_recorder.isRecording || _recorder.isPaused) {
+      Future.microtask(_recorder.finish);
+    }
     if (selected != null) _endExercise();
     _endScoreSession();
     _timeline = null;
@@ -571,7 +576,14 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
   }
 
   /// The disk bar steps aside while the score has the whole screen.
+  bool _immersiveShown = false;
+
   void _syncShell() {
+    if (_immersiveShown != _immersive) {
+      _immersiveShown = _immersive;
+      debugPrint('[Diagnostics] immersive: $_immersive');
+      _osmd.setImmersive(_immersive);
+    }
     final shell = _shell = ShellScope.maybeOf(context);
     if (shell == null || shell.immersive == _immersive) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -583,14 +595,15 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
   Future<bool> _onRecorderAction(RecorderAction action) async {
     final session = _scoreSession;
     if (session == null) return false;
+    // The paused screen shows at once; the last notes come in behind it.
+    if (action != RecorderAction.restart) setState(() => _paused = true);
     await session.stopListening();
-    if (!mounted) return false;
+    // Too late: the run was finished, or another started, meanwhile.
+    if (!mounted || !identical(session, _scoreSession)) return false;
     switch (action) {
       case RecorderAction.pause:
-        setState(() => _paused = true);
         return false;
       case RecorderAction.fromNote:
-        setState(() => _paused = true);
         _startPicking();
         return false;
       case RecorderAction.restart:
@@ -790,6 +803,21 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
     };
     _osmd.onNoteTap = _onNoteTap;
     _osmd.onNotePick = _onNotePick;
+    // macOS: clicks on the score reach the page, not the layer over it.
+    _osmd.onScreenTap = (count) {
+      debugPrint(
+        '[Diagnostics] screen tap x$count (immersive=$_immersive, '
+        'recording=$_isRecording, paused=$_paused, picking=$_picking)',
+      );
+      if (!_immersive) return;
+      if (count >= 2) {
+        _recorder.finish();
+      } else {
+        // Shown at once: the recorder takes a moment to stop listening.
+        setState(() => _paused = true);
+        _recorder.pause();
+      }
+    };
     PracticePrefs.instance.addListener(_onPrefsChanged);
     PracticePrefs.instance.load();
     _setScore(widget.selected);

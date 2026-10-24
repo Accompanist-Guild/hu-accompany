@@ -64,7 +64,9 @@ class PhraseUploadService {
     }
 
     final body = jsonEncode({
-      if (sessionId != null) 'session_id': sessionId,
+      // An empty id (a server that couldn't store the last phrase answers
+      // with none) is the same as no id: the server starts a session.
+      if (sessionId != null && sessionId.isNotEmpty) 'session_id': sessionId,
       'phrase': phraseNumber,
       'timing': {'bpm': bpm, 'time_signature': timeSignature},
       'piece': piece.toJson(),

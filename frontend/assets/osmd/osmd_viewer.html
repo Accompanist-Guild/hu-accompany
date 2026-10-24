@@ -17,26 +17,18 @@
     #ink { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
     #ink path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 
-    /* Live practice (OSMDBridge.live). A note due to be played sways a little,
-       now and then, so the eye finds it without it shouting; a note just
-       played gives a small hop. Both move the whole note (head and stem). */
-    .hu-due { animation: hu-due 1.3s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 80%; }
+    /* Live practice (OSMDBridge.live). A note due to be played jumps, and
+       keeps hopping until it is played, so the eye finds where to play. It
+       moves the whole note (head and stem). */
+    .hu-due { animation: hu-due 900ms cubic-bezier(.3, .7, .35, 1) infinite; transform-box: fill-box; transform-origin: 50% 100%; }
     @keyframes hu-due {
-      0%, 46%, 100% { transform: rotate(0deg); }
-      10% { transform: rotate(-5deg); }
-      22% { transform: rotate(4deg); }
-      34% { transform: rotate(-2deg); }
+      0%, 55%, 100% { transform: translateY(0) scale(1); }
+      20% { transform: translateY(-7px) scale(1.06); }
+      40% { transform: translateY(1px) scale(.99); }
     }
-    .hu-jump { animation: hu-jump 360ms cubic-bezier(.3, .7, .35, 1); transform-box: fill-box; transform-origin: 50% 100%; }
-    @keyframes hu-jump {
-      0% { transform: translateY(0) scale(1); }
-      38% { transform: translateY(-7px) scale(1.08); }
-      72% { transform: translateY(1px) scale(.98); }
-      100% { transform: translateY(0) scale(1); }
-    }
-    /* A mistake flashes for a few seconds, then stays. */
-    .hu-flash { animation: hu-flash 500ms ease-in-out; }
-    @keyframes hu-flash { 0%, 100% { opacity: 1; } 50% { opacity: 0.12; } }
+    /* A word under a mistake comes in once, gently, then stays still. */
+    .hu-appear { animation: hu-appear 260ms ease-out; }
+    @keyframes hu-appear { from { opacity: 0; } to { opacity: 1; } }
     /* A repeat starting: the word pops up over the music, then fades. */
     .hu-pop {
       position: absolute; z-index: 6; transform: translate(-50%, -50%); pointer-events: none; white-space: nowrap;
@@ -64,7 +56,7 @@
       pointer-events: none; }
     body.picking .vf-stavenote { cursor: pointer; }
     @media (prefers-reduced-motion: reduce) {
-      .hu-due, .hu-jump, .hu-flash { animation: none; }
+      .hu-due, .hu-appear { animation: none; }
       .hu-pop { animation: hu-pop-still 1.8s linear forwards; }
       @keyframes hu-pop-still { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
     }
@@ -402,7 +394,6 @@
       var lastTouch = 0;
       var picking = false;
       var COLORS = { perfect: '#6DBE8C', close: '#E0B43A', wrong: '#D9534F' };
-      var FLASH_MS = 3000;
       var NS = 'http://www.w3.org/2000/svg';
       var occurrences = null;     // source note -> [ids], in time order
       var drawn = new Map();      // source note -> {parts: [el], labels: [el]}
@@ -482,7 +473,7 @@
             if (original) part.setAttribute(attr, original); else part.removeAttribute(attr);
             part.removeAttribute(kept);
           });
-          part.classList && part.classList.remove('hu-flash');
+          part.classList && part.classList.remove('hu-appear');
         });
       }
 
@@ -494,14 +485,11 @@
         });
       }
 
-      function flash(els, since) {
-        var left = FLASH_MS - (Date.now() - since);
-        if (left <= 200) return;
+      function appear(els) {
         els.forEach(function (el) {
-          el.classList.remove('hu-flash');
-          void el.getBoundingClientRect();
-          el.style.animationIterationCount = String(Math.max(1, Math.round(left / 500)));
-          el.classList.add('hu-flash');
+          el.classList.remove('hu-appear');
+          void el.getBoundingClientRect();  // restart the animation
+          el.classList.add('hu-appear');
         });
       }
 
@@ -632,7 +620,7 @@
         if (!head) return;
         var word = label(head, wordFor(latest, source), COLORS.wrong);
         done.labels.push(word);
-        if (animate) flash([word], latest.at);
+        if (animate) appear([word]);
       }
 
       // Shows notes `ids` as they went this time through (black if not played
@@ -681,21 +669,14 @@
         dueIds = ids || [];
         dueIds.forEach(function (id) {
           var el = groupOf(id);
-          if (el && !el.classList.contains('hu-jump')) el.classList.add('hu-due');
+          if (el) el.classList.add('hu-due');
         });
       }
 
-      function jump(id) {
+      // A note just played stops hopping (its colour says how it went).
+      function settle(id) {
         var el = groupOf(id);
-        if (!el) return;
-        el.classList.remove('hu-due', 'hu-jump');
-        void el.getBoundingClientRect();  // restart the animation
-        el.classList.add('hu-jump');
-        el.addEventListener('animationend', function done(e) {
-          if (e.target !== el) return;
-          el.classList.remove('hu-jump');
-          el.removeEventListener('animationend', done);
-        });
+        if (el) el.classList.remove('hu-due');
       }
 
       // Keeps the next note to play in view, unless the player has just
@@ -752,7 +733,26 @@
         return found.map(function (f) { return f.id; });
       }
 
+      // While playing along the score has the whole screen: one click (or
+      // tap) pauses, two finish. On macOS clicks reach the page, not a layer
+      // the app puts over it, so they are caught here.
+      var immersive = false, tapTimer = null;
+      function screenTap(e) {
+        if (e.detail >= 2) {
+          clearTimeout(tapTimer);
+          tapTimer = null;
+          if (e.detail === 2) post('screenTap', { count: 2 });
+          return;
+        }
+        clearTimeout(tapTimer);
+        tapTimer = setTimeout(function () {
+          tapTimer = null;
+          post('screenTap', { count: 1 });
+        }, 280);
+      }
+
       document.addEventListener('click', function (e) {
+        if (immersive) { screenTap(e); return; }
         if (mode !== 'off' || !loaded) return;
         hideTip();
         if (spot) { clearSpotlight(); return; }
@@ -869,7 +869,7 @@
           if (update.repeat) { showTimes(update.repeat); pop(update.repeatWord || 'Repeat!'); }
           if (typeof update.follow === 'boolean') following = update.follow;
           if (update.due) setDue(update.due);
-          (update.played || []).forEach(jump);
+          (update.played || []).forEach(settle);
           keepInView();
         },
 
@@ -900,6 +900,14 @@
         // Darkens and blurs everything but note `id`, scrolled to it.
         spotlight: spotlight,
         clearSpotlight: clearSpotlight,
+
+        // Playing along: clicks are 'screenTap' messages, not note taps.
+        setImmersive: function (on) {
+          immersive = !!on;
+          clearTimeout(tapTimer);
+          tapTimer = null;
+          if (immersive) { hideTip(); clearSpotlight(); }
+        },
 
         // A drag on the app's layer over the page (while recording).
         scrollBy: function (dy) {

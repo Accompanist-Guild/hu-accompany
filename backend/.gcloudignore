@@ -1,0 +1,6 @@
+# What `gcloud builds submit` (deploy/cloud-run.sh) leaves out of the upload. The Docker build
+# ignores the same things (.dockerignore), but the upload happens first and would otherwise send
+# them all to Google: mxl.tar alone is 2 GB.
+.gcloudignore
+#!include:.dockerignore
+mxl.tar

@@ -141,7 +141,9 @@ def phrase_feedback_view(request):
         result["session_id"] = session_id
         result["stored_at"] = _storage_path(stored_path)
     except (StorageFailed, OSError) as e:
-        result["session_id"] = session_id
+        # The id this phrase would have been stored under, so the next phrase
+        # can name the same session; never None, which the app sends back.
+        result["session_id"] = session_id or feedback_store.session_id_for(piece)
         result["stored_at"] = None
         result["storage_error"] = str(e)
 

@@ -1,6 +1,7 @@
 # Keep the image small and keep secrets and local data out of it.
 
 # Local environments, secrets, and local data
+mxl.tar
 .venv/
 .env
 .env.*

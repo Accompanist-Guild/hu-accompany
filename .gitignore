@@ -122,3 +122,8 @@ backend/hum_data/
 # Soundfonts used to render songs (large; copy them in by hand, see backend/hum/README.md)
 *.sf2
 backend/.wrangler/
+
+# neonctl: which Neon organization to use (set by backend/deploy/setup.sh)
+.neon
+# Cloudflare's wrangler tool, when run from the repo root (backend/.wrangler/ is above)
+/.wrangler/
