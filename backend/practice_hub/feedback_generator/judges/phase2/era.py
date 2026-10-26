@@ -11,17 +11,17 @@ performance. Nothing upstream carries a composition date (the score
 catalog and pdf_processor's piece_data have title/composer but no date), so
 the caller supplies it as piece["composed_date"].
 
-Status: structure only. Era detection and the per-era trait data are
-implemented; the prose in each `_<era>_feedback` builder is deliberately
-left unimplemented, so Era.json comes out with era/label/traits filled in
-and an empty findings list.
+Status: detection only. Era.json comes out with era/label/traits and a
+one-line framing; the era-specific feedback itself is authored as
+guidelines tagged with the era (see the `guidelines` app), which is also
+how a score's era tag is derived (era_for_year below).
 """
 
 import re
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
-from .. import Finding, JudgeResult, PieceContext
+from .. import JudgeResult, PieceContext
 
 NAME = "era"
 PHASE = 2
@@ -234,66 +234,28 @@ def adjacent_era(year: Optional[int], margin_years: int = TRANSITION_MARGIN_YEAR
     return None
 
 
-# --- Per-era feedback builders (not implemented yet) -------------------------
+# --- Era feedback ------------------------------------------------------------
 #
-# Each builder receives the detected era's profile and the whole-piece
-# context (piece metadata, every phase-1 phrase file, aggregated scores, and
-# every phase-1 finding), and returns this era's Findings -- i.e. how the
-# performance measured up against *that era's* traits, not just against the
-# notes. Deliberately left blank; only the dispatch structure is in place.
+# How a performance measures up against an era's style is authored, not
+# coded: guidelines tagged with the era (e.g. "baroque") carry rubrics that
+# run on every phrase (feedback_generator/guidelines/) and are rolled up by
+# judges/phase2/guidelines.py. This judge only names the era.
 
 
-def _renaissance_feedback(profile: EraProfile, ctx: PieceContext) -> List[Finding]:
-    pass
-
-
-def _baroque_feedback(profile: EraProfile, ctx: PieceContext) -> List[Finding]:
-    pass
-
-
-def _classical_feedback(profile: EraProfile, ctx: PieceContext) -> List[Finding]:
-    pass
-
-
-def _romantic_feedback(profile: EraProfile, ctx: PieceContext) -> List[Finding]:
-    pass
-
-
-def _late_romantic_feedback(profile: EraProfile, ctx: PieceContext) -> List[Finding]:
-    pass
-
-
-def _modern_feedback(profile: EraProfile, ctx: PieceContext) -> List[Finding]:
-    pass
-
-
-def _contemporary_feedback(profile: EraProfile, ctx: PieceContext) -> List[Finding]:
-    pass
-
-
-_ERA_FEEDBACK_BUILDERS: Dict[str, Callable[[EraProfile, PieceContext], List[Finding]]] = {
-    RENAISSANCE: _renaissance_feedback,
-    BAROQUE: _baroque_feedback,
-    CLASSICAL: _classical_feedback,
-    ROMANTIC: _romantic_feedback,
-    LATE_ROMANTIC: _late_romantic_feedback,
-    MODERN: _modern_feedback,
-    CONTEMPORARY: _contemporary_feedback,
-}
-
-
-def build_era_summary(profile: EraProfile, findings: List[Finding], transitional: Optional[EraProfile]) -> str:
-    """One-line era framing for the phase-2 summary. Not implemented yet."""
-    pass
+def build_era_summary(profile: EraProfile, transitional: Optional[EraProfile]) -> str:
+    """One-line era framing for the phase-2 summary."""
+    if transitional is not None:
+        return f"Composed in the {profile.label} era, close to the {transitional.label}."
+    return f"Composed in the {profile.label} era."
 
 
 def judge(ctx: PieceContext) -> JudgeResult:
     """Era-aware slice of the whole-piece feedback.
 
-    Detects the style period from piece["composed_date"] and dispatches to
-    that era's builder. When the date is missing/unparseable or falls
-    outside the covered ranges, `era`/`label` come back None with no
-    findings, so callers can simply omit the section.
+    Detects the style period from piece["composed_date"]. When the date is
+    missing/unparseable or falls outside the covered ranges, `era`/`label`
+    come back None, so callers can simply omit the section. Findings are
+    always empty: era-specific feedback comes from authored guidelines.
     """
     year = parse_composed_year((ctx.piece or {}).get("composed_date"))
     profile = era_for_year(year)
@@ -304,20 +266,17 @@ def judge(ctx: PieceContext) -> JudgeResult:
             details={"era": None, "label": None, "composed_year": year, "traits": [], "summary": ""},
         )
 
-    builder = _ERA_FEEDBACK_BUILDERS.get(profile.era)
-    findings = (builder(profile, ctx) if builder is not None else None) or []
     transitional = adjacent_era(year)
 
     return JudgeResult(
         category=NAME,
         score=None,
-        findings=findings,
         details={
             "era": profile.era,
             "label": profile.label,
             "composed_year": year,
             "transitional_with": transitional.label if transitional else None,
             "traits": list(profile.traits),
-            "summary": build_era_summary(profile, findings, transitional) or "",
+            "summary": build_era_summary(profile, transitional),
         },
     )

@@ -224,8 +224,8 @@ void main() {
       );
     }
 
-    testWidgets('login is off in this build until it is switched on', (tester) async {
-      expect(AppConstants.loginRequired, isFalse);
+    testWidgets('login is on by default', (tester) async {
+      expect(AppConstants.loginRequired, isTrue);
     });
 
     testWidgets('shows the app at once, even while the stored session is still being read', (tester) async {
@@ -247,9 +247,9 @@ void main() {
 
     testWidgets('uses the build setting when no value is passed', (tester) async {
       await auth.restore();
-      await pumpGate(tester); // AppConstants.loginRequired is false
+      await pumpGate(tester); // AppConstants.loginRequired is true
       await tester.pumpAndSettle();
-      expect(find.byType(AppShell), findsOneWidget);
+      expect(find.byType(LoginPage), findsOneWidget);
     });
 
     testWidgets('switching login on gives the login page back', (tester) async {

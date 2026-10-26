@@ -31,6 +31,14 @@ class Score(models.Model):
     time_signature = models.CharField(max_length=20, blank=True)
     tempo_bpm = models.FloatField(null=True, blank=True)
 
+    # Free text as catalogues write it ("1722", "ca. 1785", "1830s").
+    # The era tag is derived from it (guidelines.services.sync_auto_tags).
+    composed_date = models.CharField(max_length=100, blank=True)
+    # Matched against guideline tags: a guideline applies to a score that
+    # shares any tag with it. The era and composer tags are kept in sync
+    # automatically on save; the rest are set by authors.
+    tags = models.ManyToManyField("guidelines.Tag", related_name="scores", blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -38,6 +46,12 @@ class Score(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.composer})"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        from guidelines.services import sync_auto_tags
+
+        sync_auto_tags(self)
 
     def as_summary(self) -> dict:
         return {
@@ -49,4 +63,6 @@ class Score(models.Model):
             "measure_count": self.measure_count,
             "time_signature": self.time_signature,
             "tempo_bpm": self.tempo_bpm,
+            "composed_date": self.composed_date,
+            "tags": [tag.slug for tag in self.tags.all()],
         }

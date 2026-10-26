@@ -1,3 +1,32 @@
+# Guideline & rubric editor (Oct 26, 2026)
+
+Plan: `docs/plans/guideline-editor.md`.
+
+- **Backend, `guidelines` app (new):**
+  - Models `Tag`, `Guideline` and `Rubric`, plus the `guideline_contributor` group (data migration).
+  - Permissions: admins and verified contributors can author; contributors can edit only their own guidelines.
+  - JSON API under `/api/guidelines/*` and `PATCH /api/scores/<id>/tags`.
+  - A keyword rubric parser (`POST /api/guidelines/rubrics/parse`).
+  - `python manage.py guideline_contributor add|remove|list <email>`.
+  - `/api/auth/me` now returns `roles`.
+- **Backend, scores:** `Score` gains `composed_date` and `tags`. The era tag (from the date) and the composer tag are kept in sync on save, and `as_summary()` includes both.
+- **Backend, feedback:**
+  - Rubrics from the guidelines matching a phrase's `piece.score_id` / `piece.tags` run after the built-in judges.
+  - They add `guideline` findings and `scores.guidelines`, and leave `overall` unchanged.
+  - Phase 2 writes `Guidelines.json`.
+  - The empty per-era builder stubs are gone; Era.json now has a one-line summary.
+- **App:**
+  - Phrases send `score_id` and `tags`.
+  - A "How to play" card appears on a score that has guidelines.
+  - `PhraseStrip` and `PhraseFeedbackPill` show guideline findings.
+  - The run summary shows the server's whole-session summary, including guideline results (the typed `SessionSummary`).
+  - A Guides tab (8th disk) appears only for admins and contributors, with a list, an editor, and a rubric editor that parses text into a structured rule.
+- **Not done:**
+  - `django.contrib.admin` is not enabled, so `guidelines/admin.py` is inert. Contributors are granted with the management command.
+  - Catalogue scores have no composition dates yet (PDMX has none); set them through the tags endpoint.
+
+---
+
 # What changed (Sep 18 – Sep 30, 2026)
 
 A summary of the work on the app, the Rust audio engine and the backend over

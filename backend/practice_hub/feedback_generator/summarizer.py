@@ -11,6 +11,7 @@ what it measured.
 import dataclasses
 from typing import Dict, List, Optional
 
+from .guidelines.evaluator import CATEGORY as GUIDELINE_CATEGORY
 from .judges import Finding, PieceContext, bar_span, overall_score
 
 SCORE_DIMENSIONS = ("pitch", "rhythm", "tempo", "dynamics", "articulation")
@@ -176,6 +177,10 @@ def build_main_feedback(findings: List[dict]) -> List[Finding]:
     """The piece's top recurring problems, most important first."""
     groups: Dict[str, List[dict]] = {}
     for finding in findings:
+        # Authored-guideline findings are summarised by their own phase-2
+        # judge (judges/phase2/guidelines.py), not ranked against these.
+        if finding.get("category") == GUIDELINE_CATEGORY:
+            continue
         groups.setdefault(group_key(finding), []).append(finding)
 
     weighted = []

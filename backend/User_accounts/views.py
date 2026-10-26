@@ -22,6 +22,8 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from guidelines.permissions import roles_of
+
 from . import tokens
 
 log = logging.getLogger(__name__)
@@ -49,7 +51,15 @@ def read_json(request: HttpRequest) -> dict | None:
 
 
 def user_json(user) -> dict:
-    return {"id": user.pk, "email": user.email, "name": user.first_name, "joined": user.date_joined.isoformat()}
+    return {
+        "id": user.pk,
+        "email": user.email,
+        "name": user.first_name,
+        "joined": user.date_joined.isoformat(),
+        # "admin" / "contributor": who may author guidelines. The app only
+        # uses this to show the Guides tab; the server checks it again.
+        "roles": roles_of(user),
+    }
 
 
 def _clean_email(value) -> str | None:

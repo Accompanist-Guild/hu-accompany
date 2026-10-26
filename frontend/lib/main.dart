@@ -34,6 +34,9 @@ import 'package:hu_accomponist/features/practice/score_practice_widgets.dart';
 import 'package:hu_accomponist/features/practice/score_practice_session.dart';
 import 'package:hu_accomponist/features/practice/score_practice_sheet.dart';
 import 'package:hu_accomponist/features/practice/score_timeline.dart';
+import 'package:hu_accomponist/features/practice/how_to_play_card.dart';
+import 'package:hu_accomponist/integrations/guidelines/guideline_models.dart';
+import 'package:hu_accomponist/integrations/guidelines/guideline_repository.dart';
 import 'package:hu_accomponist/integrations/audio/Rust_Bridge.dart';
 
 // Re-exported so anything that already reached for PhraseFeedback through
@@ -376,11 +379,9 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
   /// Identity of the loaded score, captured when it is picked from the
   /// library and sent with every phrase.
   ///
-  /// `composedDate` is empty because nothing in the app knows it: the
-  /// score catalog carries title and composer only. The backend treats
-  /// `piece` as optional metadata and stores it
-  /// as-is, so an empty date is honest; a fabricated one would be written
-  /// into every stored phrase file.
+  /// `composedDate` is whatever the catalogue knows, often nothing: an
+  /// empty date is honest; a fabricated one would be written into every
+  /// stored phrase file.
   PieceInfo _piece = const PieceInfo(title: '', composer: '', composedDate: '');
 
   // Null until a score has been picked from the library.
@@ -424,8 +425,32 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
         : PieceInfo(
             title: selected.summary.title,
             composer: selected.summary.composer,
-            composedDate: '',
+            composedDate: selected.summary.composedDate,
+            // The backend resolves the score's tags from its id and checks
+            // the matching authored guidelines on every phrase.
+            scoreId: selected.summary.id,
+            tags: selected.summary.tags,
           );
+    _guides = const [];
+    _guidesDismissed = false;
+    if (selected != null) _loadGuides(selected.summary.id);
+  }
+
+  /// "How to play" guidelines for the loaded score, shown in a card before
+  /// the first run.
+  List<Guideline> _guides = const [];
+  bool _guidesDismissed = false;
+  final GuidelineRepository _guideRepository = const ApiGuidelineRepository();
+
+  Future<void> _loadGuides(String scoreId) async {
+    try {
+      final guides = await _guideRepository.forScore(scoreId);
+      if (!mounted || _score?.summary.id != scoreId) return;
+      setState(() => _guides = guides);
+    } on Object catch (e) {
+      // No card is better than an error over the score.
+      debugPrint('[Diagnostics] guidelines for score $scoreId: $e');
+    }
   }
 
   Future<void> _loadInk(String scoreId) async {
@@ -1072,6 +1097,27 @@ class _ScoreViewerPageState extends State<ScoreViewerPage> {
                           child: IgnorePointer(
                             child: Center(
                               child: PhraseStrip(report: _latestReport),
+                            ),
+                          ),
+                        ),
+                      // How to play this piece, from the authored
+                      // guidelines its tags match. Before playing only.
+                      if (_guides.isNotEmpty &&
+                          !_guidesDismissed &&
+                          !_isRecording &&
+                          !_reviewing &&
+                          !_picking &&
+                          _startFromId == null &&
+                          _exercise == null)
+                        Positioned(
+                          top: 40,
+                          left: Space.sm,
+                          right: Space.sm,
+                          child: Center(
+                            child: HowToPlayCard(
+                              guidelines: _guides,
+                              onDismiss: () =>
+                                  setState(() => _guidesDismissed = true),
                             ),
                           ),
                         ),

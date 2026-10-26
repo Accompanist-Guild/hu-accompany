@@ -99,6 +99,7 @@ abstract final class TurntablePalette {
   static const Color diskHum = Color(0xFF0F1A1A);
   static const Color diskHome = Color(0xFF141311);
   static const Color diskSettings = Color(0xFF15161B);
+  static const Color diskGuides = Color(0xFF1A1710);
 
   static const Color tonearmMount = Color(0xFF2A2A2E);
   static const Color tonearmArm = Color(0xFFB9B9BD);

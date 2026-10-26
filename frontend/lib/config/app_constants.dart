@@ -9,13 +9,15 @@
 abstract final class AppConstants {
   static const String appName = 'Accompanist';
 
-  /// Whether people must sign in before using the app. Off for now: nothing
-  /// in the app needs an account (your shelf and songs live on the phone, and
-  /// the server does not tie hums to anyone). The login page and all sign-in
-  /// code are still here; turn this on to bring them back:
+  /// Whether people must sign in before using the app. On by default: the
+  /// account carries the roles that let admins and verified contributors
+  /// write guidelines (the Guides tab). To build without the login page:
   ///
-  ///   flutter build ios --dart-define=LOGIN_REQUIRED=true
-  static const bool loginRequired = bool.fromEnvironment('LOGIN_REQUIRED');
+  ///   flutter run --dart-define=LOGIN_REQUIRED=false
+  static const bool loginRequired = bool.fromEnvironment(
+    'LOGIN_REQUIRED',
+    defaultValue: true,
+  );
 
   /// Whether Talk mode (changing the song by typing or speaking to it) is part of this build. Off by default:
   /// the server answers it through Google Gemini and ElevenLabs, which cost money per use and need their own

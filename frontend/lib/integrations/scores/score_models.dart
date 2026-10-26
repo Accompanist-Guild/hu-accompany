@@ -9,12 +9,20 @@ class ScoreSummary {
   final double? tempoBpm;
   final String timeSignature;
 
+  /// As the catalogue writes it ("1722", "ca. 1785"); empty when unknown.
+  final String composedDate;
+
+  /// What authored guidelines are matched against ("baroque", "j-s-bach").
+  final List<String> tags;
+
   const ScoreSummary({
     required this.id,
     required this.title,
     required this.composer,
     this.tempoBpm,
     this.timeSignature = '',
+    this.composedDate = '',
+    this.tags = const [],
   });
 
   factory ScoreSummary.fromJson(Map<String, dynamic> json) => ScoreSummary(
@@ -23,6 +31,8 @@ class ScoreSummary {
     composer: json['composer'] as String? ?? '',
     tempoBpm: (json['tempo_bpm'] as num?)?.toDouble(),
     timeSignature: json['time_signature'] as String? ?? '',
+    composedDate: json['composed_date'] as String? ?? '',
+    tags: [for (final t in json['tags'] as List<dynamic>? ?? const []) '$t'],
   );
 }
 

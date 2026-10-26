@@ -185,6 +185,22 @@ class ScorePracticeSession extends ChangeNotifier {
     await _sendQueue;
   }
 
+  /// The backend's session id, once the first phrase has come back.
+  String? get sessionId => _sessionId;
+
+  /// The server's whole-session summary (built-in judges plus authored
+  /// guidelines), once every phrase sent so far has been judged. Null when
+  /// nothing was stored or the server can't be reached.
+  Future<SessionSummary?> serverSummary({
+    Future<SessionSummary?> Function(String sessionId) fetch =
+        SessionSummaryService.fetch,
+  }) async {
+    await _sendQueue;
+    final id = _sessionId;
+    if (id == null || id.isEmpty || _disposed) return null;
+    return fetch(id);
+  }
+
   void _enqueue(List<AssembledPhrase> phrases) {
     for (final phrase in phrases) {
       _sendQueue = _sendQueue.then((_) => _send(phrase));

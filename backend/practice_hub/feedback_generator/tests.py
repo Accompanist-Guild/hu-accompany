@@ -492,7 +492,7 @@ class JudgePieceTests(TestCase):
 
     def test_produces_one_file_per_phase2_judge_plus_summary(self):
         files = judge_piece(self.phrases(), piece={"title": "Prelude in C", "composed_date": "1722"})
-        self.assertEqual(sorted(files), ["Era", "Summary"])
+        self.assertEqual(sorted(files), ["Era", "Guidelines", "Summary"])
 
     def test_summary_aggregates_every_phrase(self):
         summary = judge_piece(self.phrases())["Summary"]
@@ -506,12 +506,42 @@ class JudgePieceTests(TestCase):
         self.assertEqual(era["era"], "baroque")
         self.assertEqual(era["composed_year"], 1722)
         self.assertEqual(len(era["traits"]), 5)
-        self.assertEqual(era["feedback"], [])  # builders not implemented yet
+        self.assertEqual(era["feedback"], [])  # era feedback is authored as guidelines
+        self.assertEqual(era["summary"], "Composed in the Baroque era.")
 
     def test_unknown_date_leaves_the_era_section_empty(self):
         era = judge_piece(self.phrases(), piece={"composed_date": "unknown"})["Era"]
         self.assertIsNone(era["era"])
         self.assertEqual(era["feedback"], [])
+
+    def test_guidelines_section_is_empty_without_guidelines(self):
+        section = judge_piece(self.phrases())["Guidelines"]
+        self.assertEqual(section["type"], "guidelines")
+        self.assertEqual((section["guidelines"], section["rubrics"], section["feedback"]), ([], [], []))
+
+    def test_guidelines_section_aggregates_rubric_failures(self):
+        from .guidelines import GuidelineSpec, RubricSpec
+
+        spec = GuidelineSpec(
+            id=5, title="Detached", rubrics=(RubricSpec(id=9, metric="note_gap", operator="gt", value=100, unit="ms"),)
+        )
+        notes = [
+            {"note_id": i, "pitch_hz": 440.0, "start_time_ms": i * 500.0, "end_time_ms": (i + 1) * 500.0,
+             "duration_ms": 500.0}
+            for i in range(3)
+        ]
+        detached = [{**n, "end_time_ms": n["start_time_ms"] + 250.0, "duration_ms": 250.0} for n in notes]
+        phrases = [
+            judge_phrase(phrase=1, bpm=120.0, expected_notes=notes, user_notes=notes, guidelines=[spec]),
+            judge_phrase(phrase=2, bpm=120.0, expected_notes=notes, user_notes=detached, guidelines=[spec]),
+            judge_phrase(phrase=3, bpm=120.0, expected_notes=notes, user_notes=notes, guidelines=[spec]),
+        ]
+        section = judge_piece(phrases)["Guidelines"]
+        (row,) = section["rubrics"]
+        self.assertEqual((row["rubric_id"], row["phrases_checked"], row["phrases_failed"]), (9, 3, 2))
+        self.assertEqual(row["worst_bars"], [1])
+        self.assertEqual(section["guidelines"], [{"id": 5, "version": 1, "title": "Detached", "phrases_checked": 3}])
+        self.assertEqual(section["feedback"][0]["category"], "guideline")
 
 
 class EraDetectionTests(TestCase):

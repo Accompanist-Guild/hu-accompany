@@ -42,6 +42,10 @@ class AuthController extends ChangeNotifier {
   AuthStatus get status => _status;
   AuthUser? get user => _user;
 
+  /// The bearer token for calls made on the person's behalf outside the
+  /// accounts API (the Guides editor). Null when signed out.
+  String? get token => _token;
+
   Future<void> restore() async {
     StoredSession? stored;
     try {

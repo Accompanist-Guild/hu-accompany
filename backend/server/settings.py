@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     "django.contrib.auth",
     "User_accounts",
     "api",
+    "guidelines",
     "scores",
     "hum",
 ]

@@ -26,12 +26,16 @@ class DiskBar extends StatefulWidget {
   final ValueChanged<int>? onSwiped;
   final VoidCallback onHold;
 
+  /// The disks along the row, in slot order.
+  final List<DiskPage> pages;
+
   const DiskBar({
     super.key,
     required this.index,
     required this.onSelected,
     required this.onHold,
     this.onSwiped,
+    this.pages = diskPages,
   });
 
   /// The middle disk's diameter; the side disks are a little smaller.
@@ -62,7 +66,7 @@ class _DiskBarState extends State<DiskBar> with SingleTickerProviderStateMixin {
   double _settleTo = 0;
   double _dragStartPosition = 0;
 
-  static final int _count = diskPages.length;
+  int get _count => widget.pages.length;
 
   /// Pixels between neighbouring disks; set in build. The drag uses it so
   /// the row follows the finger 1:1.
@@ -95,7 +99,7 @@ class _DiskBarState extends State<DiskBar> with SingleTickerProviderStateMixin {
   }
 
   /// Slots from [from] to the page [index], going the short way round.
-  static double _shortest(double from, int index) {
+  double _shortest(double from, int index) {
     final delta = (index - from) % _count;
     return delta > _count / 2 ? delta - _count : delta;
   }
@@ -210,7 +214,7 @@ class _DiskBarState extends State<DiskBar> with SingleTickerProviderStateMixin {
   }
 
   Widget _disk(int i, double size) {
-    final page = diskPages[i];
+    final page = widget.pages[i];
     return Semantics(
       button: true,
       selected: i == widget.index,

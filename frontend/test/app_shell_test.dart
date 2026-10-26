@@ -149,7 +149,7 @@ void main() {
       await pumpShell(tester);
       final centers = [
         for (final icon in [
-          diskPages[PageSlot.settings].icon,
+          diskPages[PageSlot.guides].icon,
           diskPages[PageSlot.home].icon,
           diskPages[PageSlot.practice].icon,
         ])
@@ -183,8 +183,8 @@ void main() {
     ) async {
       await pumpShell(tester);
       await swipeBar(tester, 100);
-      expect(shell.index, PageSlot.settings);
-      expect(find.text('page:Settings'), findsOneWidget);
+      expect(shell.index, PageSlot.guides);
+      expect(find.text('page:Guides'), findsOneWidget);
 
       await swipeBar(tester, -100);
       expect(shell.index, PageSlot.home);

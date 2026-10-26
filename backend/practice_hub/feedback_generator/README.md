@@ -173,18 +173,17 @@ curl -s -X POST http://127.0.0.1:8000/api/feedback/summary \
 ```
 
 - Writes `Phase2/Summary.json` (piece-wide scores, top 3 recurring
-  problems, what went well, one-line summary) and `Phase2/Era.json`.
+  problems, what went well, one-line summary), `Phase2/Era.json` and
+  `Phase2/Guidelines.json` (authored-guideline adherence, §6).
 - 404 if the session has no phase-1 phrases yet.
 - `backend/storage/` is **not** gitignored — clean up with
   `rm -r storage/feedback`.
 
 ## 5. `judges/phase2/era.py` status
-
-- Structure only: date parsing, era detection and the per-era trait tables
-  work; the `_<era>_feedback` builders and `build_era_summary` are
-  deliberately unimplemented, so `Era.json` comes out with
-  `era`/`label`/`traits` filled in and `feedback: []`.
-
+- Detection only. Date parsing, era detection and the per-era trait tables
+  work. `Era.json` has `era`/`label`/`traits`, a one-line `summary`
+  ("Composed in the Baroque era.") and `feedback: []`.
+- Era-specific feedback is authored as guidelines tagged with the era (§6).
 ```
 python -c "
 from practice_hub.feedback_generator.judges.phase2.era import parse_composed_year, detect_era, adjacent_era
@@ -200,3 +199,35 @@ for d in [1722, '1810', 'ca. 1785', '1830s', '1802-1804', '18th century', None, 
 - `None`/`''`/`'unknown' -> None None`, i.e. the era section stays empty.
 - Once the builders produce prose, extend `EraDetectionTests`/`JudgePieceTests`
   in `tests.py` with the boundary years (1749/1750, 1819/1820).
+
+## 6. Authored guidelines (`guidelines/`)
+
+Admins and verified contributors write guidelines in the app's Guides tab
+(Django app `backend/guidelines`). Each guideline is "how to play" text
+attached to tags (`baroque`, `j-s-bach`, `fugue`) and may carry rubrics:
+measurable rules checked on every phrase **in addition to** the built-in
+judges. They never change `overall`.
+
+- `guidelines/types.py`: `RubricSpec` / `GuidelineSpec`. These are framework-free; the ORM converts to them with `to_spec()`.
+- `guidelines/metrics.py` holds the metric registry. Each metric turns a `PhraseContext` into measurements:
+  - `note_gap`: the next played onset minus this played offset, for written notes that touch and were both played. Units: `ms`, `sec`, `pct_of_note`, `pct_of_beat`.
+  - `sounding_ratio`: played length divided by written length. Units: `pct_of_note`, `ratio`.
+  - `onset_deviation`: how far each onset was from the written one, in ms. Units: `ms`, `sec`, `pct_of_beat`.
+  - `volume_range`: loudest minus softest note in the phrase. Units: `volume` (0–1), `db`.
+  - `applies_to` (`all|staccato|legato|unmarked`) filters on `markings`.
+- `guidelines/evaluator.py` checks the rubrics:
+  - A rubric fails when the share of passing measurements is below `pass_rate` (default 0.8).
+  - Relative units are resolved per note and tempo. For example, 30% of the note on a 375 ms quarter at ♩=160 is 112.5 ms.
+  - Nothing to measure means no finding, and the rubric doesn't count towards the guideline score.
+- **Phase 1:**
+  - `judge_phrase(..., guidelines=[GuidelineSpec])` adds `category: "guideline"` findings, with details `{guideline_id, guideline_title, version, rubric_id, metric, pass_rate, measured_pass_rate, checked, failed, failing_bars, suggestion}`.
+  - It also adds `scores.guidelines`, the mean pass rate × 100 or null.
+  - `guidelines_applied: [{id, version, title}]` is stored in the phrase file.
+  - The API resolves the guidelines from `piece.score_id` / `piece.tags`.
+- **Phase 2:**
+  - `judges/phase2/guidelines.py` writes `Phase2/Guidelines.json` with `{guidelines: [{id, version, title, phrases_checked}], rubrics: [{..., phrases_checked, phrases_failed, worst_bars, suggestion}], feedback: [...]}`.
+  - The summarizer leaves guideline findings out of `Summary.json`'s top problems.
+- Rubric text is parsed by `backend/guidelines/parsing/` (a keyword vocabulary in `vocab.py`, behind a `RubricTranslator` interface).
+
+Tests:
+`python manage.py test practice_hub.feedback_generator.guidelines.tests guidelines`.

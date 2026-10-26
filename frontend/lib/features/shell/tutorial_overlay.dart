@@ -36,6 +36,9 @@ class TutorialOverlay extends StatefulWidget {
   final VoidCallback onSkip;
   final VoidCallback onDone;
 
+  /// The disks the tour describes (the Guides disk only for authors).
+  final List<DiskPage> pages;
+
   const TutorialOverlay({
     super.key,
     required this.step,
@@ -44,6 +47,7 @@ class TutorialOverlay extends StatefulWidget {
     required this.onNext,
     required this.onSkip,
     required this.onDone,
+    this.pages = diskPages,
   });
 
   @override
@@ -181,6 +185,7 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                       ),
                     ),
                     child: _Card(
+                      pages: widget.pages,
                       key: ValueKey('$step-${widget.succeeded}'),
                       step: step,
                       succeeded: widget.succeeded,
@@ -248,9 +253,11 @@ class _Card extends StatelessWidget {
   final VoidCallback onNext;
   final VoidCallback onSkip;
   final VoidCallback onDone;
+  final List<DiskPage> pages;
 
   const _Card({
     super.key,
+    required this.pages,
     required this.step,
     required this.succeeded,
     required this.onNext,
@@ -386,7 +393,7 @@ class _Card extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (final page in diskPages)
+          for (final page in pages)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: Space.xxs),
               child: Row(

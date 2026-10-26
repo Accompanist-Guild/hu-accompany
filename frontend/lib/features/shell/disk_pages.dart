@@ -27,7 +27,19 @@ abstract final class PageSlot {
   static const int quiz = 4;
   static const int hum = 5;
   static const int settings = 6;
+
+  /// Everyone reads guidelines here; only admins and verified contributors
+  /// can write them.
+  static const int guides = 7;
 }
+
+/// The Guides disk: how-to-play guidelines, and (for authors) writing them.
+const DiskPage guidesDiskPage = DiskPage(
+  title: 'Guides',
+  caption: 'How-to-play guidelines for eras, composers and pieces',
+  icon: Icons.menu_book_rounded,
+  diskColor: TurntablePalette.diskGuides,
+);
 
 const List<DiskPage> diskPages = [
   DiskPage(
@@ -72,4 +84,5 @@ const List<DiskPage> diskPages = [
     icon: Icons.settings_rounded,
     diskColor: TurntablePalette.diskSettings,
   ),
+  guidesDiskPage,
 ];

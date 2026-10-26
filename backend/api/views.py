@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 
 from django.conf import settings
@@ -8,6 +9,30 @@ from django.views.decorators.http import require_http_methods
 from practice_hub.feedback_generator import judge_phrase, judge_piece
 from practice_hub.feedback_generator import store as feedback_store
 from practice_hub.feedback_generator.errors import InvalidNoteData, InvalidSessionId, StorageFailed
+
+log = logging.getLogger(__name__)
+
+MAX_PIECE_TAGS = 50
+
+
+def _piece_guidelines(piece):
+    """The authored guidelines that apply to `piece`: those sharing any tag
+    with the catalogue score `piece["score_id"]` names, or with
+    `piece["tags"]` (built-in exercises have no score row). Never raises --
+    a guideline lookup failure costs the player the guideline feedback,
+    not the phrase feedback."""
+    if not piece:
+        return []
+    try:
+        from guidelines.services import resolve_guidelines, tags_for_score
+
+        tags = list(piece.get("tags") or [])
+        if piece.get("score_id") is not None:
+            tags += tags_for_score(piece["score_id"])
+        return resolve_guidelines(tags) if tags else []
+    except Exception:
+        log.exception("couldn't load guidelines for piece %r", piece.get("score_id"))
+        return []
 
 
 @csrf_exempt
@@ -69,11 +94,16 @@ def phrase_feedback_view(request):
              highlight. Omit it and every `box` is null),
            "session_id": str (optional),
            "piece": {...} (optional, stored as-is -- e.g. title, composer,
-             composed_date, which phase 2's era judge reads back)}
+             composed_date, which phase 2's era judge reads back; plus
+             `score_id` (int) and/or `tags` ([str]), which select the
+             authored guidelines whose rubrics are checked too -- see
+             feedback_generator/guidelines/)}
     `expected_notes` must be non-empty. `user_notes` may be empty (silence
     -> every expected note comes back as a missing-note finding).
 
-    Response: judge_phrase()'s dict plus "session_id" and "stored_at"
+    Response: judge_phrase()'s dict (including `scores.guidelines`, any
+    category "guideline" findings, and `guidelines_applied`) plus
+    "session_id" and "stored_at"
     (a storage/... path), or "storage_error" if it couldn't be saved, plus
     "bar_boxes" -- the piece's full bar-box list echoed back (the same
     `bar_boxes` that came in, or [] if none), so the caller has every bar's
@@ -110,6 +140,19 @@ def phrase_feedback_view(request):
         return JsonResponse({"error": "piece must be an object"}, status=400)
     if bar_boxes is not None and not isinstance(bar_boxes, list):
         return JsonResponse({"error": "bar_boxes must be a list"}, status=400)
+    if piece is not None:
+        score_id = piece.get("score_id")
+        if score_id is not None and (not isinstance(score_id, int) or isinstance(score_id, bool)):
+            return JsonResponse({"error": "piece.score_id must be an integer"}, status=400)
+        tags = piece.get("tags")
+        if tags is not None and (
+            not isinstance(tags, list)
+            or len(tags) > MAX_PIECE_TAGS
+            or not all(isinstance(tag, str) for tag in tags)
+        ):
+            return JsonResponse(
+                {"error": f"piece.tags must be a list of at most {MAX_PIECE_TAGS} strings"}, status=400
+            )
     if session_id is not None:
         try:
             feedback_store.validate_session_id(session_id)
@@ -124,6 +167,7 @@ def phrase_feedback_view(request):
             user_notes=user_notes,
             time_signature=time_signature,
             bar_boxes=bar_boxes,
+            guidelines=_piece_guidelines(piece),
         )
     except InvalidNoteData as e:
         return JsonResponse({"error": str(e)}, status=400)

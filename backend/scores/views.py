@@ -40,7 +40,7 @@ def search_view(request: HttpRequest):
         return JsonResponse({"error": "limit must be an integer"}, status=400)
     limit = max(1, min(limit, MAX_LIMIT))
 
-    scores = Score.objects.all()
+    scores = Score.objects.prefetch_related("tags")
     for word in query.split():
         scores = scores.filter(Q(title__icontains=word) | Q(composer__icontains=word))
 

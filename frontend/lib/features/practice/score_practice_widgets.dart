@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:hu_accomponist/features/practice/live_judge.dart';
 import 'package:hu_accomponist/features/practice/practice_prefs.dart';
 import 'package:hu_accomponist/features/practice/score_practice_session.dart';
+import 'package:hu_accomponist/features/practice/session_summary_panel.dart';
 import 'package:hu_accomponist/integrations/feedback/Pull_back_phrase.dart';
 import 'package:hu_accomponist/shared/theme/Color_Theme.dart';
 import 'package:hu_accomponist/shared/theme/Design_Tokens.dart';
@@ -39,6 +40,7 @@ class PhraseStrip extends StatelessWidget {
       'tempo' => 'Tempo drifting',
       'articulation' => notes('not as marked'),
       'dynamics' => 'Uneven loudness',
+      'guideline' => n == 1 ? 'Style tip' : '$n style tips',
       _ => notes('to check'),
     };
   }
@@ -394,6 +396,13 @@ class ScoreSummarySheet extends StatelessWidget {
               _count(colors.close, 'A little off', counts[NoteResult.close]!),
               _count(colors.wrong, 'Mistakes', mistakeCount),
             ],
+          ),
+          // Kept at a fixed place in the list, so it keeps its loaded
+          // summary while the verdicts below keep arriving.
+          const SizedBox(height: Space.md),
+          SessionSummaryPanel(
+            key: ObjectKey(session),
+            load: session.serverSummary,
           ),
           if (total > 0) ...[
             const SizedBox(height: Space.md),

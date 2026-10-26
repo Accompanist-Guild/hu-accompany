@@ -1,19 +1,74 @@
 # API Routes
 
-Defined in `backend/server/urls.py` (root, includes `api.urls`) and
-`backend/api/urls.py` (all actual routes). Every route is POST-only and
-CSRF-exempt; request/response bodies are JSON.
+Root URLconf: `backend/server/urls.py`, which includes `api.urls`,
+`scores.urls`, `guidelines.urls`, `hum.urls` and `User_accounts.urls`.
+Bodies are JSON; POST views are CSRF-exempt. In production every request
+also needs the `X-App-Key` header (`server/middleware.py`).
 
-| Method | Path | View |
-|---|---|---|
-| POST | `/developer/chat/` | `api.views.chat_view` |
-| POST | `/developer/api/search` | `api.views.search_view` |
-| POST | `/api/imslp/search` | `api.views.imslp_search_view` |
-| POST | `/api/imslp/download` | `practice_hub.imslp_downloader.api.download_view` |
-| POST | `/api/score/process` | `api.views.process_score_view` |
-| POST | `/api/score/process-omr` | `api.views.process_score_omr_view` |
+## Current routes
 
----
+| Method | Path | View | Auth |
+|---|---|---|---|
+| POST | `/developer/chat/` | `api.views.chat_view` | — |
+| POST | `/api/feedback/phrase` | `api.views.phrase_feedback_view` | — |
+| POST | `/api/feedback/summary` | `api.views.summary_feedback_view` | — |
+| GET | `/api/quiz/topics`, POST `/api/quiz/generate` | `quiz.api` | — |
+| GET | `/api/scores/search` | `scores.views.search_view` | — |
+| GET | `/api/scores/<id>/musicxml` | `scores.views.musicxml_view` | — |
+| PATCH | `/api/scores/<id>/tags` | `guidelines.views.score_tags_view` | author |
+| GET | `/api/guidelines` | `guidelines.views.guidelines_view` | optional |
+| POST | `/api/guidelines` | `guidelines.views.guidelines_view` | author |
+| GET | `/api/guidelines/<id>` | `guidelines.views.guideline_view` | optional |
+| PUT/DELETE | `/api/guidelines/<id>` | `guidelines.views.guideline_view` | owner or admin |
+| GET | `/api/guidelines/for-score/<score_id>` | `guidelines.views.for_score_view` | — |
+| GET | `/api/guidelines/tags` | `guidelines.views.tags_view` | — |
+| GET | `/api/guidelines/vocabulary` | `guidelines.views.vocabulary_view` | — |
+| POST | `/api/guidelines/rubrics/parse` | `guidelines.views.parse_rubric_view` | author |
+| * | `/api/auth/*` | `User_accounts.views` | see that module |
+| * | `/api/hum/*` | `hum` views | — |
+
+"author" = a bearer token of an admin (`is_staff`) or a verified
+contributor (group `guideline_contributor`; grant it with
+`python manage.py guideline_contributor add <email>`). Others get 401
+(no/invalid token) or 403. `/api/auth/me` returns the user's `roles`.
+
+## Feedback
+
+`/api/feedback/phrase` and `/api/feedback/summary` are documented in their
+docstrings and in `practice_hub/feedback_generator/README.md`. A phrase's
+`piece` may carry `score_id` (int) and/or `tags` ([str]); the published
+guidelines sharing any tag are checked too, adding `category: "guideline"`
+findings, `scores.guidelines` (never part of `overall`) and
+`guidelines_applied`. The summary adds a `Guidelines` section.
+
+## Guidelines
+
+- **Guideline JSON:** `{id, title, body, tags, status: draft|published,
+  visibility, version, owner_name, editable, created_at, updated_at,
+  rubrics: [...]}`.
+- **Rubric JSON:** `{id, label, source_text, metric, operator, value,
+  value_max, unit, applies_to, pass_rate, severity, fail_message,
+  suggestion, enabled}`. `metric`/`unit` come from `GET /api/guidelines/vocabulary`.
+- **GET `/api/guidelines`:** published public guidelines.
+  - With an author token, `?mine=1` gives your own, drafts included.
+  - With an author token, `?all=1` adds your own drafts; for admins it gives everything.
+  - `?tags=a,b` filters by tag.
+- **POST / PUT:** the body is the guideline fields above, plus nested `rubrics`.
+  - PUT updates only the fields sent. A rubric sent with its `id` keeps it; rubrics left out are deleted.
+  - Each edit bumps `version`.
+  - Invalid input returns 400 `{error, code: "invalid", fields: {...}}`.
+  - Limits: title ≤ 200, body ≤ 20 000, ≤ 20 tags, ≤ 20 rubrics. Only `visibility: public` is accepted for now.
+- **POST `/api/guidelines/rubrics/parse`:** `{text}` →
+  `{rule|null, matched_spans: [{start, end, role}], missing, unrecognised, message, translator}`.
+  - `"gaps between the notes is more then 0.5 sec"` →
+    `{metric: note_gap, operator: gt, value: 0.5, unit: sec}`.
+- **PATCH `/api/scores/<id>/tags`:** `{tags?, composed_date?}`.
+  - The era tag (from `composed_date`) and the composer tag are kept in sync automatically.
+
+## Legacy (no longer routed)
+
+The sections below describe IMSLP/OMR endpoints that `api/urls.py` no
+longer includes. Kept for reference.
 
 ## POST `/developer/chat/`
 Dev/debug echo endpoint.

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:hu_accomponist/features/guides/guides_page.dart';
 import 'package:hu_accomponist/features/home/home_page.dart';
 import 'package:hu_accomponist/features/hum/hum_page.dart';
 import 'package:hu_accomponist/features/onboarding/onboarding_store.dart';
@@ -74,12 +75,14 @@ class _AppShellState extends State<AppShell>
     _practiceBuilt = _shell.index == PageSlot.practice;
     _tutorialRequestsSeen = _shell.tutorialRequests;
     _shell.addListener(_onShellChanged);
+    widget.auth.addListener(_onAuthChanged);
     _startTutorialIfFirstRun();
   }
 
   @override
   void dispose() {
     _shell.removeListener(_onShellChanged);
+    widget.auth.removeListener(_onAuthChanged);
     _fade.dispose();
     super.dispose();
   }
@@ -147,6 +150,14 @@ class _AppShellState extends State<AppShell>
 
   // ── Shell changes ──────────────────────────────────────────────────
 
+  List<DiskPage> get _pages => diskPages;
+
+  /// Roles arrive with the account: the Guides page shows its editing
+  /// tools only to authors, so it rebuilds when they change.
+  void _onAuthChanged() {
+    if (mounted) setState(() {});
+  }
+
   void _onShellChanged() {
     if (_shell.tutorialRequests != _tutorialRequestsSeen) {
       _tutorialRequestsSeen = _shell.tutorialRequests;
@@ -198,6 +209,7 @@ class _AppShellState extends State<AppShell>
     PageSlot.shelf => const Shelf_Page(),
     PageSlot.quiz => const Quiz_Home_Page(),
     PageSlot.hum => const HumPage(),
+    PageSlot.guides => GuidesPage(auth: widget.auth),
     _ => SettingsPage(auth: widget.auth),
   };
 
@@ -208,7 +220,9 @@ class _AppShellState extends State<AppShell>
     // for a page that wants the whole screen.
     final barVisible = media.viewInsets.bottom == 0 && !_shell.immersive;
     final barHeight = DiskBar.heightFor(context);
-    final index = _shell.index;
+    final pages = _pages;
+    // A slot not offered (a stale Guides index) shows Home meanwhile.
+    final index = _shell.index < pages.length ? _shell.index : PageSlot.home;
     final blocking = _drawerOpen || _tutorialStep != null;
 
     // Pages are told the bar's height is part of the bottom inset, so their
@@ -247,7 +261,7 @@ class _AppShellState extends State<AppShell>
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    for (var slot = 0; slot < diskPages.length; slot++)
+                    for (var slot = 0; slot < pages.length; slot++)
                       if ((slot == PageSlot.practice && _practiceBuilt) ||
                           slot == index)
                         _hosted(slot, active: slot == index),
@@ -265,6 +279,7 @@ class _AppShellState extends State<AppShell>
                   onSelected: _shell.goTo,
                   onSwiped: _onSwiped,
                   onHold: _openDrawer,
+                  pages: pages,
                 ),
               ),
             DiskDrawer(
@@ -272,6 +287,7 @@ class _AppShellState extends State<AppShell>
               index: index,
               onSelected: _pickFromDrawer,
               onClose: _closeDrawer,
+              pages: pages,
             ),
             if (_tutorialStep case final step?)
               Positioned.fill(
@@ -282,6 +298,7 @@ class _AppShellState extends State<AppShell>
                   onNext: _nextStep,
                   onSkip: _endTutorial,
                   onDone: _endTutorial,
+                  pages: pages,
                 ),
               ),
           ],

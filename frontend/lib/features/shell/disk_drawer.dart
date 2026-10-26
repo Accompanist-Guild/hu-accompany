@@ -20,12 +20,16 @@ class DiskDrawer extends StatefulWidget {
   final ValueChanged<int> onSelected;
   final VoidCallback onClose;
 
+  /// The disks to lay out, in slot order.
+  final List<DiskPage> pages;
+
   const DiskDrawer({
     super.key,
     required this.open,
     required this.index,
     required this.onSelected,
     required this.onClose,
+    this.pages = diskPages,
   });
 
   @override
@@ -102,8 +106,9 @@ class _DiskDrawerState extends State<DiskDrawer>
   }
 
   /// Disks per column. Pages fill the left column top to bottom, then the
-  /// right; a seventh sits in the middle of the bottom row.
-  static const int _perColumn = 3;
+  /// right; an odd one out (the seventh of seven) sits in the middle of the
+  /// bottom row.
+  int get _perColumn => widget.pages.length ~/ 2;
 
   Widget _scatter(BuildContext context) {
     final media = MediaQuery.of(context);
@@ -131,7 +136,7 @@ class _DiskDrawerState extends State<DiskDrawer>
 
     return Stack(
       children: [
-        for (var i = 0; i < diskPages.length; i++)
+        for (var i = 0; i < widget.pages.length; i++)
           () {
             final column = i ~/ _perColumn;
             final row = i % _perColumn;
@@ -162,7 +167,7 @@ class _DiskDrawerState extends State<DiskDrawer>
   }
 
   Widget _item(int i, double disk, {required Offset from}) {
-    final page = diskPages[i];
+    final page = widget.pages[i];
     final active = i == widget.index;
     // Each disk leaves a beat after the one before, with a little overshoot.
     final start = (i * 0.07).clamp(0.0, 0.5);

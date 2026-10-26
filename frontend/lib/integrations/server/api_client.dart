@@ -60,6 +60,25 @@ class ApiClient {
     });
   }
 
+  Future<http.Response> putJson(
+    String path,
+    Map<String, dynamic> body, {
+    Map<String, String>? headers,
+  }) {
+    return _send((baseUrl) {
+      return http
+          .put(
+            Uri.parse('$baseUrl$path'),
+            headers: ServerAuth.headers({
+              'Content-Type': 'application/json',
+              ...?headers,
+            }),
+            body: jsonEncode(body),
+          )
+          .timeout(timeout);
+    });
+  }
+
   Future<http.Response> delete(String path, {Map<String, String>? headers}) {
     return _send((baseUrl) {
       return http

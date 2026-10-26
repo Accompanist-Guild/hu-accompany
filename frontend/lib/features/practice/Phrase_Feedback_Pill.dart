@@ -190,6 +190,7 @@ class PhraseFeedbackPill extends StatelessWidget {
   }
 
   Widget _finding(PhraseFeedbackItem item) {
+    if (item.isGuideline) return _guidelineFinding(item);
     return Container(
       padding: const EdgeInsets.all(Space.xs),
       decoration: BoxDecoration(
@@ -224,6 +225,74 @@ class PhraseFeedbackPill extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// A finding from an authored guideline: marked as style advice (not a
+  /// wrong note), named after its guideline, with the author's suggestion.
+  Widget _guidelineFinding(PhraseFeedbackItem item) {
+    final suggestion = item.details['suggestion'];
+    return Semantics(
+      label: 'Style guideline',
+      child: Container(
+        padding: const EdgeInsets.all(Space.xs),
+        decoration: BoxDecoration(
+          color: PracticePalette.gold.withValues(alpha: 0.08),
+          borderRadius: Radii.cardRadius,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(
+              Icons.menu_book_rounded,
+              size: 12,
+              color: PracticePalette.gold,
+            ),
+            const SizedBox(width: Space.xs),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.guidelineTitle.isEmpty
+                        ? 'Guideline'
+                        : 'Guideline · ${item.guidelineTitle}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: PracticePalette.gold,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    item.message,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: PracticePalette.mutedBrown,
+                      fontSize: 11,
+                      height: 1.35,
+                    ),
+                  ),
+                  if (suggestion is String && suggestion.isNotEmpty)
+                    Text(
+                      suggestion,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: PracticePalette.mutedBrown,
+                        fontSize: 10,
+                        fontStyle: FontStyle.italic,
+                        height: 1.35,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -20,6 +20,7 @@ import dataclasses
 from typing import Dict, List, Optional, Tuple
 
 from .errors import InvalidNoteData
+from .guidelines import GuidelineSpec, evaluate_guidelines
 from .judges import (
     ExpectedNote,
     PhraseContext,
@@ -208,8 +209,16 @@ def judge_phrase(
     user_notes: List[dict],
     time_signature: Optional[str] = None,
     bar_boxes: Optional[List[dict]] = None,
+    guidelines: Optional[List[GuidelineSpec]] = None,
 ) -> dict:
     """Compare one recorded phrase against its expected notes.
+
+    `guidelines` are the authored guidelines that apply to this piece (see
+    feedback_generator/guidelines/). Their rubrics run after the built-in
+    judges: failures join `feedback` as category "guideline" findings, the
+    mean rubric pass rate is `scores["guidelines"]` (None when nothing
+    applied), and `guidelines_applied` lists which guideline versions were
+    checked. None of it changes `overall`.
 
     Returns the phase-1 file body:
         {"phrase", "bpm", "time_signature", "bars": [first, last],
@@ -247,6 +256,15 @@ def judge_phrase(
         scores[result.category] = result.score
         findings.extend((finding.bars, index, finding) for finding in result.findings)
 
+    # Computed before guidelines join `scores`: they never count towards it.
+    overall = overall_score(scores)
+
+    guideline_specs = list(guidelines or [])
+    guideline_score, guideline_findings = evaluate_guidelines(ctx, guideline_specs)
+    scores["guidelines"] = guideline_score
+    after_judges = len(phase1_judges())
+    findings.extend((finding.bars, after_judges, finding) for finding in guideline_findings)
+
     findings.sort(key=lambda entry: (entry[0], entry[1]))
     bars = bar_span(ctx.bar(note.start_time_ms) for note in parsed_expected)
 
@@ -258,8 +276,11 @@ def judge_phrase(
         "bpm": bpm,
         "time_signature": time_signature or None,
         "bars": bars,
-        "scores": {"overall": overall_score(scores), **scores},
+        "scores": {"overall": overall, **scores},
         "feedback": feedback,
+        "guidelines_applied": [
+            {"id": spec.id, "version": spec.version, "title": spec.title} for spec in guideline_specs
+        ],
     }
 
 

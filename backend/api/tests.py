@@ -129,10 +129,10 @@ class SummaryFeedbackViewTests(FeedbackViewTestCase):
         data = self._post(self.url, {"session_id": session_id}).json()
 
         self.assertEqual(data["phrases"], [1, 2])
-        self.assertEqual(sorted(data["phase2"]), ["Era", "Summary"])
+        self.assertEqual(sorted(data["phase2"]), ["Era", "Guidelines", "Summary"])
         self.assertEqual(data["phase2"]["Summary"]["feedback"][0]["category"], "pitch")
         self.assertTrue(data["phase2"]["Summary"]["summary"])
-        self.assertEqual([p.name for p in self._phase2_files()], ["Era.json", "Summary.json"])
+        self.assertEqual([p.name for p in self._phase2_files()], ["Era.json", "Guidelines.json", "Summary.json"])
 
     def test_era_comes_from_the_piece_metadata_stored_in_phase1(self):
         session_id = self._session_with_two_phrases()
@@ -143,7 +143,7 @@ class SummaryFeedbackViewTests(FeedbackViewTestCase):
         session_id = self._session_with_two_phrases()
         self._post(self.url, {"session_id": session_id})
         self._post(self.url, {"session_id": session_id})
-        self.assertEqual(len(self._phase2_files()), 2)
+        self.assertEqual(len(self._phase2_files()), 3)
 
     def test_unknown_session_returns_404(self):
         response = self._post(self.url, {"session_id": "2026-01-01-Nothing"})
@@ -155,3 +155,88 @@ class SummaryFeedbackViewTests(FeedbackViewTestCase):
     def test_invalid_json_returns_400(self):
         response = self.client.post(self.url, data="not json", content_type="application/json")
         self.assertEqual(response.status_code, 400)
+
+
+class GuidelineFeedbackTests(FeedbackViewTestCase):
+    """Authored guidelines layered onto phase 1 and summarised in phase 2."""
+
+    def setUp(self):
+        super().setUp()
+        from guidelines.models import Guideline, Rubric
+        from guidelines.services import tag_objects
+
+        self.guideline = Guideline.objects.create(
+            title="Baroque: detached touch", body="Play detached.", status=Guideline.PUBLISHED, version=2
+        )
+        self.guideline.tags.set(tag_objects(["baroque"]))
+        self.rubric = Rubric.objects.create(
+            guideline=self.guideline, metric="note_gap", operator="gt", value=0.5, unit="sec",
+            suggestion="Lift between notes.",
+        )
+
+    def legato_body(self, piece):
+        """Four back-to-back quarters played fully legato: every gap is 0."""
+        expected = [
+            {"note_id": i, "pitch_hz": 440.0, "start_time_ms": i * 625.0, "end_time_ms": (i + 1) * 625.0,
+             "duration_ms": 625.0}
+            for i in range(4)
+        ]
+        return {**self.valid_body, "piece": piece, "expected_notes": expected, "user_notes": [dict(n) for n in expected]}
+
+    def guideline_findings(self, data):
+        return [f for f in data["feedback"] if f["category"] == "guideline"]
+
+    def test_no_guidelines_leaves_output_unchanged(self):
+        data = self._post_phrase().json()
+        self.assertIsNone(data["scores"]["guidelines"])
+        self.assertEqual(data["guidelines_applied"], [])
+        self.assertEqual(self.guideline_findings(data), [])
+
+    def test_tags_select_guidelines_without_changing_overall(self):
+        plain = self._post_phrase(self.legato_body({"title": "A"})).json()
+        tagged = self._post_phrase(self.legato_body({"title": "B", "tags": ["Baroque"]})).json()
+        self.assertEqual(plain["scores"]["overall"], tagged["scores"]["overall"])
+        (finding,) = self.guideline_findings(tagged)
+        self.assertEqual(finding["details"]["rubric_id"], self.rubric.pk)
+        self.assertEqual(finding["details"]["suggestion"], "Lift between notes.")
+        self.assertIn("box", finding)
+        self.assertEqual(tagged["scores"]["guidelines"], 0)
+        self.assertEqual(
+            tagged["guidelines_applied"], [{"id": self.guideline.pk, "version": 2, "title": "Baroque: detached touch"}]
+        )
+        stored = json.loads(self._phase1_files()[-1].read_text())
+        self.assertEqual(stored["guidelines_applied"][0]["id"], self.guideline.pk)
+
+    def test_score_id_resolves_the_scores_tags(self):
+        from scores.models import Score
+
+        score = Score.objects.create(
+            title="Prelude", composer="Bach", pdmx_path="mxl/p.mxl", musicxml_path="musicxml/p.musicxml",
+            sha256="p", part_count=1, measure_count=4, composed_date="1722",
+        )
+        data = self._post_phrase(self.legato_body({"title": "Prelude", "score_id": score.pk})).json()
+        self.assertEqual(len(self.guideline_findings(data)), 1)
+
+    def test_unknown_score_id_is_ignored(self):
+        response = self._post_phrase(self.legato_body({"title": "X", "score_id": 987654}))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["guidelines_applied"], [])
+
+    def test_bad_piece_fields_return_400(self):
+        for piece in ({"score_id": "1"}, {"tags": "baroque"}, {"tags": [1]}):
+            with self.subTest(piece=piece):
+                self.assertEqual(self._post_phrase(self.legato_body(piece)).status_code, 400)
+
+    def test_summary_rolls_guidelines_up(self):
+        first = self._post_phrase(self.legato_body({"title": "B", "tags": ["baroque"]})).json()
+        self._post_phrase({**self.legato_body({"title": "B", "tags": ["baroque"]}), "phrase": 2,
+                           "session_id": first["session_id"]})
+        data = self._post("/api/feedback/summary", {"session_id": first["session_id"]}).json()
+        section = data["phase2"]["Guidelines"]
+        self.assertEqual(section["type"], "guidelines")
+        (row,) = section["rubrics"]
+        self.assertEqual((row["phrases_checked"], row["phrases_failed"]), (2, 2))
+        self.assertEqual(section["guidelines"][0]["phrases_checked"], 2)
+        self.assertEqual(len(section["feedback"]), 1)
+        # Guideline findings are summarised here, not in Summary's top problems.
+        self.assertFalse(any(f["category"] == "guideline" for f in data["phase2"]["Summary"]["feedback"]))

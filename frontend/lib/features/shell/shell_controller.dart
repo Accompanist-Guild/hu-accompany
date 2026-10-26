@@ -34,7 +34,7 @@ class ShellController extends ChangeNotifier {
   }
 
   void goTo(int index) {
-    assert(index >= 0 && index < diskPages.length);
+    assert(index >= 0 && index <= PageSlot.guides);
     if (index == _index) return;
     _index = index;
     notifyListeners();
