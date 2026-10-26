@@ -73,8 +73,9 @@
     <section id="demo" class="demo">
       <div class="section-head">
         <h2>Try it once.</h2>
-        <p>Für Elise, right here, with the same listening engine as the app. Play it on a piano or
-          keyboard near your computer, out loud. Nothing you play leaves your browser.</p>
+        <p>Für Elise, or a score of your own, with the same listening engine as the app. Play it on
+          a piano or keyboard near your computer, out loud. Nothing you play, and no file you open,
+          leaves your browser.</p>
       </div>
 
       <div class="demo-controls">
@@ -87,6 +88,10 @@
           </select>
         </label>
         <button id="demo-start" class="btn btn-ink" type="button" disabled>Start playing</button>
+        <label class="btn btn-line file-btn" title="MusicXML: .musicxml, .xml or .mxl">
+          Open your own score
+          <input id="demo-file" type="file" accept=".musicxml,.xml,.mxl,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml">
+        </label>
         <p id="demo-status" class="demo-status" role="status">Loading the score…</p>
       </div>
       <div class="demo-used-note">

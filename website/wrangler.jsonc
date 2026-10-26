@@ -1,0 +1,14 @@
+// The website on Cloudflare (Workers static assets). deploy.sh stages the files in dist/ first.
+{
+  "name": "accompanist",
+  "compatibility_date": "2026-10-19",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  },
+  "workers_dev": false,
+  "routes": [
+    { "pattern": "accompanist.app", "custom_domain": true },
+    { "pattern": "www.accompanist.app", "custom_domain": true }
+  ]
+}

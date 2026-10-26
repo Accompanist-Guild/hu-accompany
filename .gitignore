@@ -132,3 +132,4 @@ website/engine/
 website/viewer/
 website/licenses.html
 web_engine/target/
+website/dist/

@@ -4,7 +4,10 @@
 import { LiveJudge, isMistake, layout, pieceData, timeName } from './judge.js';
 
 const SCORE_URL = 'scores/fur-elise.musicxml';
-const TITLE = 'Für Elise';
+/** The piece being played: Für Elise, or a score the visitor opened. */
+let title = 'Für Elise';
+/** Largest score file accepted (a long piano piece in MusicXML is about 1-2 MB). */
+const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const USED_KEY = 'accompanist.demo.used';
 const TICK_MS = 80;
 
@@ -13,6 +16,7 @@ const frame = $('score-frame');
 const startButton = $('demo-start');
 const status = $('demo-status');
 const handsSelect = $('demo-hands');
+const fileInput = $('demo-file');
 
 // ── The score page ─────────────────────────────────────────────────────────
 let bridge = null;          // the page's OSMDBridge, once it says it is ready
@@ -40,14 +44,19 @@ window.addEventListener('message', (e) => {
     connect();
   } else if (type === 'timeline') {
     timeline = payload;
-    if (!timeline.notes || !timeline.notes.length) return say('This score could not be read.');
+    if (!timeline.notes || !timeline.notes.length) {
+      state = 'idle';
+      startButton.disabled = true;
+      return say('No notes to play were found in that score. Try another file.');
+    }
     ready();
   } else if (type === 'screenTap') {
     if (state === 'listening') (payload.count >= 2 ? finish : pause)();
   } else if (type === 'noteTap') {
     showNote(payload.ids);
   } else if (type === 'error') {
-    say('The score could not be shown: ' + payload.message);
+    if (state === 'loading') state = 'idle';
+    say('That score could not be opened: ' + payload.message);
   }
 });
 
@@ -87,14 +96,44 @@ function ready() {
     startButton.disabled = true;
     return say('Your browser can’t run the demo. Try a recent Chrome, Edge, Firefox or Safari.');
   }
-  if (timeline.staves < 2) handsSelect.hidden = true;
+  handsSelect.parentElement.hidden = timeline.staves < 2;
+  if (timeline.staves < 2) handsSelect.value = 'both';
   startButton.disabled = false;
-  say('');
+  say(title === 'Für Elise' ? '' : `Ready: ${title}.`);
+  if (worker) return;
   // The engine (about 4 MB) loads while the visitor reads.
   worker = new Worker(new URL('./engine-worker.js', import.meta.url), { type: 'module' });
   worker.onmessage = onWorker;
   worker.postMessage({ type: 'warm' });
 }
+
+// ── The visitor's own score ────────────────────────────────────────────────
+// Read here, in the browser: the file is never sent anywhere.
+fileInput.addEventListener('change', async () => {
+  const file = fileInput.files[0];
+  fileInput.value = '';
+  if (!file || state !== 'idle' || used()) return;
+  if (file.size > MAX_FILE_BYTES) return say('That file is too big for the demo (8 MB at most).');
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let content;
+  if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
+    // .mxl is a zip: the score page takes it as a binary string.
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    content = binary;
+  } else {
+    content = new TextDecoder().decode(bytes);
+    if (!/<score-(partwise|timewise)/.test(content)) {
+      return say('That isn’t a MusicXML file. Export one from MuseScore, Finale, Sibelius or Dorico (.musicxml or .mxl).');
+    }
+  }
+  title = file.name.replace(/\.(musicxml|xml|mxl)$/i, '') || 'Your score';
+  state = 'loading';
+  timeline = null;
+  startButton.disabled = true;
+  say(`Opening ${title}…`);
+  call((b) => { b.resetLive(); b.loadScore(content); });
+});
 
 function showUsed() {
   document.body.classList.add('demo-used');
@@ -135,6 +174,7 @@ startButton.addEventListener('click', async () => {
   judge = new LiveJudge(notes, bpm);
   call((b) => b.resetLive());
   handsSelect.disabled = true;
+  fileInput.disabled = true;
   await listenFrom(null);
 });
 
@@ -144,7 +184,7 @@ async function listenFrom(fromId) {
   const remaining = notes.filter((n) => !from || n.startMs >= from.startMs);
   live(judge.restartFrom(fromId));
   const channel = new MessageChannel();
-  worker.postMessage({ type: 'start', piece: pieceData(TITLE, bpm, remaining), sampleRate: audio.ctx.sampleRate, port: channel.port2 }, [channel.port2]);
+  worker.postMessage({ type: 'start', piece: pieceData(title, bpm, remaining), sampleRate: audio.ctx.sampleRate, port: channel.port2 }, [channel.port2]);
   if (audio.ctx.state === 'suspended') await audio.ctx.resume();
 
   state = 'counting';

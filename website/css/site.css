@@ -267,3 +267,8 @@ body.demo-playing .zoom { display: none; }
   .note.due, .countin.beat { animation: none; }
 }
 .legend .pencil text.mid { font-size: 24px; }
+.file-btn { position: relative; overflow: hidden; }
+.file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.file-btn:has(input:disabled) { opacity: .45; }
+.file-btn:has(input:disabled) input { cursor: default; }
+.field[hidden] { display: none; }
