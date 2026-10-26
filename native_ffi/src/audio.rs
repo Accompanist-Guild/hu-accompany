@@ -378,18 +378,86 @@ fn dsp_processing_loop(mut intake: Intake, sample_rate: u32) {
 /// interval; notes are only reported once they end anyway). For each frame the
 /// DSP analyser looks at the audio centred on the same moment, for the
 /// measured pitch and the re-attack level.
-fn neural_processing_loop(mut intake: Intake, sample_rate: u32, mut net: StreamingPitchNet) {
-    let ms_per_sample = 1000.0 / sample_rate as f32;
-    let mut analyzer = Analyzer::new(sample_rate);
-    let mut follower = Follower::new(Thresholds::NEURAL);
-    let mut levels = LevelLog::new(sample_rate);
-    // Device audio still needed by the DSP analyser; history[0] is sample `history_start`.
-    let mut history: Vec<f32> = Vec::new();
-    let mut history_start: usize = 0;
-    let mut window = vec![0.0f32; FFT_SIZE];
-    let mut strays = StrayKeys::new();
+fn neural_processing_loop(mut intake: Intake, sample_rate: u32, net: StreamingPitchNet) {
+    let mut session = NeuralSession::with_net(sample_rate, net);
+    while let Some(chunk) = intake.next() {
+        session.push(&chunk);
+        intake.give_back(chunk);
+    }
+    session.finish();
+}
 
-    let mut step = |frames: Vec<NetFrame>, history: &[f32], history_start: usize, follower: &mut Follower, levels: &LevelLog| {
+/// The neural pipeline, fed audio as it arrives: the app's processing thread
+/// pushes the microphone's chunks into it, and the website's engine
+/// (web_engine/) the browser's. Notes go out through `publish` as they are
+/// heard, and the ones still sounding at `finish`.
+pub struct NeuralSession {
+    net: StreamingPitchNet,
+    ms_per_sample: f32,
+    sample_rate: u32,
+    analyzer: Analyzer,
+    follower: Follower,
+    levels: LevelLog,
+    /// Device audio still needed by the DSP analyser; history[0] is sample `history_start`.
+    history: Vec<f32>,
+    history_start: usize,
+    window: Vec<f32>,
+    strays: StrayKeys,
+}
+
+impl NeuralSession {
+    /// For audio at `sample_rate` (the device's, any rate).
+    pub fn new(sample_rate: u32) -> tract_onnx::prelude::TractResult<Self> {
+        Ok(Self::with_net(sample_rate, StreamingPitchNet::new(sample_rate)?))
+    }
+
+    fn with_net(sample_rate: u32, net: StreamingPitchNet) -> Self {
+        Self {
+            net,
+            ms_per_sample: 1000.0 / sample_rate as f32,
+            sample_rate,
+            analyzer: Analyzer::new(sample_rate),
+            follower: Follower::new(Thresholds::NEURAL),
+            levels: LevelLog::new(sample_rate),
+            history: Vec::new(),
+            history_start: 0,
+            window: vec![0.0f32; FFT_SIZE],
+            strays: StrayKeys::new(),
+        }
+    }
+
+    /// The next stretch of audio, straight after the last one.
+    pub fn push(&mut self, chunk: &[f32]) {
+        self.history.extend_from_slice(chunk);
+        self.levels.push(chunk);
+        match self.net.push(chunk) {
+            Ok(frames) => self.step(frames),
+            Err(e) => report(AUDIO_ERR_WORKER, format!("pitch network error: {e}")),
+        }
+        // The network lags < 1 s; keep 2 s of audio for the DSP windows.
+        let keep = 2 * self.sample_rate as usize;
+        if self.history.len() > keep + self.sample_rate as usize {
+            let drop = self.history.len() - keep;
+            self.history.drain(..drop);
+            self.history_start += drop;
+        }
+    }
+
+    /// The audio has ended: the network's last frames, and notes still sounding.
+    pub fn finish(mut self) {
+        match self.net.finish() {
+            Ok(frames) => self.step(frames),
+            Err(e) => report(AUDIO_ERR_WORKER, format!("pitch network error at the end of the recording: {e}")),
+        }
+        let end_ms = (self.history_start + self.history.len()) as f32 * self.ms_per_sample;
+        if let Some(tracker) = self.follower.tracker.as_mut() {
+            let finished = tracker.finish(end_ms);
+            publish(with_volume(finished, &self.levels, tracker));
+        }
+    }
+
+    fn step(&mut self, frames: Vec<NetFrame>) {
+        let Self { ms_per_sample, analyzer, follower, levels, history, history_start, window, strays, .. } = self;
         for nf in frames {
             let Some(tracker) = follower.tracker() else { continue };
             let frame = Frame { start_ms: nf.start_ms(), end_ms: nf.start_ms() + FRAME_MS as f32 };
@@ -404,47 +472,21 @@ fn neural_processing_loop(mut intake: Intake, sample_rate: u32, mut net: Streami
                 continue;
             }
             // DSP window centred on this frame (zeros before the stream / past the end).
-            let centre = (frame.centre_ms() / ms_per_sample) as i64;
+            let centre = (frame.centre_ms() / *ms_per_sample) as i64;
             for (j, w) in window.iter_mut().enumerate() {
-                let g = centre - (FFT_SIZE / 2) as i64 + j as i64 - history_start as i64;
+                let g = centre - (FFT_SIZE / 2) as i64 + j as i64 - *history_start as i64;
                 *w = if g >= 0 { history.get(g as usize).copied().unwrap_or(0.0) } else { 0.0 };
             }
-            analyzer.analyze(&window);
+            analyzer.analyze(window);
             let expected: Vec<f64> = candidates.iter().map(|&i| tracker.pitch_hz(i)).collect();
             let observations: Vec<(usize, Option<Detection>)> = candidates
                 .iter()
-                .map(|&i| (i, neural_evidence(&nf, &analyzer, tracker.pitch_hz(i), &expected)))
+                .map(|&i| (i, neural_evidence(&nf, analyzer, tracker.pitch_hz(i), &expected)))
                 .collect();
             let finished = tracker.update(frame, &observations);
             publish(tracker.take_started());
             publish(with_volume(finished, levels, tracker));
         }
-    };
-
-    while let Some(chunk) = intake.next() {
-        history.extend_from_slice(&chunk);
-        levels.push(&chunk);
-        match net.push(&chunk) {
-            Ok(frames) => step(frames, &history, history_start, &mut follower, &levels),
-            Err(e) => report(AUDIO_ERR_WORKER, format!("pitch network error: {e}")),
-        }
-        intake.give_back(chunk);
-        // The network lags < 1 s; keep 2 s of audio for the DSP windows.
-        let keep = 2 * sample_rate as usize;
-        if history.len() > keep + sample_rate as usize {
-            let drop = history.len() - keep;
-            history.drain(..drop);
-            history_start += drop;
-        }
-    }
-    match net.finish() {
-        Ok(frames) => step(frames, &history, history_start, &mut follower, &levels),
-        Err(e) => report(AUDIO_ERR_WORKER, format!("pitch network error at the end of the recording: {e}")),
-    }
-    if let Some(tracker) = follower.tracker.as_mut() {
-        let end_ms = (history_start + history.len()) as f32 * ms_per_sample;
-        let finished = tracker.finish(end_ms);
-        publish(with_volume(finished, &levels, tracker));
     }
 }
 

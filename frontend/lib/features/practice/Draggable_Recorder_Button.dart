@@ -237,16 +237,12 @@ class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
       // stop_audio are `#[frb(ignore)]` in native_ffi/src/lib.rs and reach
       // Dart as C symbols instead (see Audio_Native.dart).
       final failure = AudioNative().begin();
-      if (failure != null) {
-        await _phraseSubscription?.cancel();
-        _phraseSubscription = null;
-      }
+      if (failure != null) _dropSubscription();
       return failure;
     } catch (error, stackTrace) {
       debugPrint('[Diagnostics] failed to start recording: $error');
       debugPrintStack(stackTrace: stackTrace);
-      await _phraseSubscription?.cancel();
-      _phraseSubscription = null;
+      _dropSubscription();
       return 'Could not start recording: $error';
     }
   }
@@ -274,8 +270,16 @@ class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
     }
     // Let the notes just sent reach the listener before it goes.
     await Future<void>.delayed(const Duration(milliseconds: 50));
-    await _phraseSubscription?.cancel();
+    _dropSubscription();
+  }
+
+  /// Stops listening to Rust's notes. Not awaited: cancelling completes only
+  /// when Rust lets go of the stream, which is when the next recording opens
+  /// a new one. Waiting for it held a pause or a finish until then.
+  void _dropSubscription() {
+    final subscription = _phraseSubscription;
     _phraseSubscription = null;
+    unawaited(subscription?.cancel());
   }
 
   Future<void> _toggle() async {
@@ -384,7 +388,11 @@ class _Draggable_Recorder_ButtonState extends State<Draggable_Recorder_Button>
     if (_starting) return;
     final onAction = widget.onAction;
     if (action == null) {
-      // Finish, from a pause: the recording is over.
+      // Finish, from a pause: the recording is over. A pause still being
+      // carried out lands first, so it can't land on the next recording.
+      final pausing = _pausing;
+      if (pausing != null) await pausing;
+      if (!mounted) return;
       setState(() => _paused = false);
       widget.onToggle(false);
       return;

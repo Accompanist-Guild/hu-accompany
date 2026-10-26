@@ -127,3 +127,8 @@ backend/.wrangler/
 .neon
 # Cloudflare's wrangler tool, when run from the repo root (backend/.wrangler/ is above)
 /.wrangler/
+# Website: assembled by website/build.sh (the engine alone is 16 MB)
+website/engine/
+website/viewer/
+website/licenses.html
+web_engine/target/

@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Accompanist</title>
+  <meta name="description" content="Play your instrument and Accompanist marks every note on the sheet music as you go. Try it once in your browser with Für Elise.">
+  <meta name="theme-color" content="#F5EFE2">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=Nanum+Pen+Script&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <header class="top">
+    <a class="wordmark" href="#top">Accompanist</a>
+    <nav>
+      <a href="#demo">Try it</a>
+      <a href="#marks">How it reads you</a>
+      <a class="nav-cta" href="#download">Download</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-text">
+        <p class="kicker">Practice, marked as you play</p>
+        <h1>Play. It listens.<br>Your sheet music <em>answers.</em></h1>
+        <p class="lede">Accompanist hears your instrument and marks every note on the score as you go:
+          green when it’s right, a pencilled word when it isn’t. It follows your tempo, so you never
+          have to keep up with a metronome.</p>
+        <div class="hero-actions">
+          <a class="btn btn-ink" href="#demo">Try Für Elise, free</a>
+          <a class="btn btn-line" href="#download">Download for Mac</a>
+        </div>
+      </div>
+      <figure class="hero-sheet" aria-label="A bar of music marked by Accompanist: right notes filled green, a late note labelled late">
+        <svg viewBox="0 0 520 250" role="img">
+          <title>Notes marked as they are played</title>
+          <g class="staff">
+            <line x1="20" y1="110" x2="500" y2="110"/><line x1="20" y1="126" x2="500" y2="126"/>
+            <line x1="20" y1="142" x2="500" y2="142"/><line x1="20" y1="158" x2="500" y2="158"/>
+            <line x1="20" y1="174" x2="500" y2="174"/>
+            <line x1="20" y1="110" x2="20" y2="174"/><line x1="260" y1="110" x2="260" y2="174"/>
+            <line x1="500" y1="110" x2="500" y2="174"/>
+          </g>
+          <g class="note good"><ellipse cx="70" cy="102" rx="9" ry="6.5" transform="rotate(-20 70 102)"/><line x1="78.5" y1="100" x2="78.5" y2="50"/></g>
+          <g class="note good"><ellipse cx="120" cy="110" rx="9" ry="6.5" transform="rotate(-20 120 110)"/><line x1="128.5" y1="108" x2="128.5" y2="58"/></g>
+          <g class="note close"><ellipse cx="170" cy="102" rx="9" ry="6.5" transform="rotate(-20 170 102)"/><line x1="178.5" y1="100" x2="178.5" y2="50"/></g>
+          <g class="note good"><ellipse cx="220" cy="134" rx="9" ry="6.5" transform="rotate(-20 220 134)"/><line x1="228.5" y1="132" x2="228.5" y2="82"/></g>
+          <g class="note"><ellipse cx="300" cy="118" rx="9" ry="6.5" transform="rotate(-20 300 118)"/><line x1="308.5" y1="116" x2="308.5" y2="66"/></g>
+          <g class="note"><ellipse cx="350" cy="126" rx="9" ry="6.5" transform="rotate(-20 350 126)"/><line x1="358.5" y1="124" x2="358.5" y2="74"/></g>
+          <g class="note due"><ellipse cx="400" cy="142" rx="9" ry="6.5" transform="rotate(-20 400 142)"/><line x1="408.5" y1="140" x2="408.5" y2="90"/></g>
+          <g class="note"><ellipse cx="450" cy="134" rx="9" ry="6.5" transform="rotate(-20 450 134)"/><line x1="458.5" y1="132" x2="458.5" y2="82"/></g>
+          <g class="pencil red">
+            <path d="M300 130 V158 M294 136 L300 130 L306 136"/>
+            <text x="300" y="186" text-anchor="middle">late</text>
+            <path d="M350 138 V200 M344 144 L350 138 L356 144"/>
+            <text x="350" y="228" text-anchor="middle">C, not D</text>
+          </g>
+          <g class="pencil green">
+            <text x="140" y="34" text-anchor="middle" class="big">nice!</text>
+          </g>
+          <g class="pencil ink">
+            <text x="466" y="40" text-anchor="middle">play me next</text>
+            <path d="M452 50 C 440 66, 428 74, 416 84 M418 74 L414 86 L426 86"/>
+          </g>
+        </svg>
+      </figure>
+    </section>
+
+    <section id="demo" class="demo">
+      <div class="section-head">
+        <h2>Try it once.</h2>
+        <p>Für Elise, right here, with the same listening engine as the app. Play it on a piano or
+          keyboard near your computer, out loud. Nothing you play leaves your browser.</p>
+      </div>
+
+      <div class="demo-controls">
+        <label class="field">
+          <span>Hands</span>
+          <select id="demo-hands">
+            <option value="both">Both hands</option>
+            <option value="right">Right hand (melody)</option>
+            <option value="left">Left hand</option>
+          </select>
+        </label>
+        <button id="demo-start" class="btn btn-ink" type="button" disabled>Start playing</button>
+        <p id="demo-status" class="demo-status" role="status">Loading the score…</p>
+      </div>
+      <div class="demo-used-note">
+        <p><strong>That was your free try.</strong> Get Accompanist to keep practising: every score in
+          the library, as often as you like.</p>
+        <a class="btn btn-ink" href="#download">Download Accompanist</a>
+      </div>
+
+      <div class="score-card" id="score-card">
+        <iframe id="score-frame" src="viewer/index.html" title="Für Elise sheet music"></iframe>
+        <div id="countin" class="countin" aria-live="assertive"></div>
+        <div id="tap-hint" class="tap-hint">Click to pause · double-click to finish</div>
+        <div class="pause-bar">
+          <span>Paused</span>
+          <button id="pause-go-on" type="button">Go on</button>
+          <button id="pause-finish" type="button">Finish</button>
+        </div>
+        <div class="review-bar">
+          <span class="review-title">Your run</span>
+          <span id="review-times" class="review-times"></span>
+          <button id="review-summary" type="button">Summary</button>
+          <button id="review-done" type="button">Done</button>
+        </div>
+        <div class="zoom">
+          <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
+          <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="marks" class="marks">
+      <div class="section-head">
+        <h2>How it reads you</h2>
+        <p>Every note gets an answer the moment you play it. Nothing covers the music but the words.</p>
+      </div>
+      <ol class="legend">
+        <li><svg viewBox="0 0 60 60" aria-hidden="true"><g class="note good"><ellipse cx="26" cy="40" rx="8" ry="6" transform="rotate(-20 26 40)"/><line x1="33.5" y1="38" x2="33.5" y2="8"/></g></svg>
+          <div><h3>Right, on time</h3><p>The whole note fills green.</p></div></li>
+        <li><svg viewBox="0 0 60 60" aria-hidden="true"><g class="note close"><ellipse cx="26" cy="40" rx="8" ry="6" transform="rotate(-20 26 40)"/><line x1="33.5" y1="38" x2="33.5" y2="8"/></g></svg>
+          <div><h3>A little off</h3><p>The right key, a touch early or late: yellow.</p></div></li>
+        <li><svg viewBox="0 0 60 60" aria-hidden="true"><g class="note"><ellipse cx="26" cy="22" rx="8" ry="6" transform="rotate(-20 26 22)"/><line x1="33.5" y1="20" x2="33.5" y2="0"/></g><g class="pencil red"><path d="M26 30 V40 M22 34 L26 30 L30 34"/><text x="26" y="56" text-anchor="middle">late</text></g></svg>
+          <div><h3>Early, late, missed</h3><p>The note stays as written; a small word under it says what happened.</p></div></li>
+        <li><svg viewBox="0 0 60 60" aria-hidden="true"><g class="note"><ellipse cx="26" cy="22" rx="8" ry="6" transform="rotate(-20 26 22)"/><line x1="33.5" y1="20" x2="33.5" y2="0"/></g><g class="pencil red"><path d="M26 30 V40 M22 34 L26 30 L30 34"/><text x="28" y="56" text-anchor="middle">D, not E</text></g></svg>
+          <div><h3>Wrong key</h3><p>It names the key you pressed and the one written.</p></div></li>
+        <li><svg viewBox="0 0 60 60" aria-hidden="true"><g class="pencil green"><text x="30" y="38" text-anchor="middle" class="mid">Repeat!</text></g></svg>
+          <div><h3>Repeats</h3><p>The bars go back to black and fill in again. Your summary keeps every time through.</p></div></li>
+        <li><svg viewBox="0 0 60 60" aria-hidden="true"><g class="note due"><ellipse cx="26" cy="40" rx="8" ry="6" transform="rotate(-20 26 40)"/><line x1="33.5" y1="38" x2="33.5" y2="8"/></g></svg>
+          <div><h3>What’s next</h3><p>The notes to play now keep jumping until you play them.</p></div></li>
+      </ol>
+      <div class="flow">
+        <div><span class="step">1</span><h3>Pick a score</h3><p>1,369 public-domain pieces, from Bach to Debussy, ready to play.</p></div>
+        <div><span class="step">2</span><h3>Play your way</h3><p>It follows your tempo. Click once to pause and write on the music, twice to finish.</p></div>
+        <div><span class="step">3</span><h3>See what to fix</h3><p>A summary of every mistake, by section, with each time through a repeat. Tap one to find it on the score.</p></div>
+      </div>
+    </section>
+
+    <section id="download" class="download">
+      <div class="section-head">
+        <h2>Get Accompanist</h2>
+        <p>The whole library, and every run marked note by note.</p>
+      </div>
+      <div class="platforms">
+        <a class="platform ready" href="https://github.com/RamusHu0410/hu-accompany/releases/latest">
+          <span class="platform-name">macOS</span>
+          <span class="platform-note">macOS 12 or later · Apple silicon and Intel</span>
+          <span class="platform-go">Download .dmg →</span>
+        </a>
+        <div class="platform">
+          <span class="platform-name">Windows</span>
+          <span class="platform-note">Coming next</span>
+        </div>
+        <div class="platform">
+          <span class="platform-name">iPhone &amp; iPad</span>
+          <span class="platform-note">On the App Store soon</span>
+        </div>
+        <div class="platform">
+          <span class="platform-name">Linux</span>
+          <span class="platform-note">Coming later</span>
+        </div>
+      </div>
+      <p class="fine">The Mac app isn’t signed by Apple yet. The first time you open it, macOS stops it:
+        open <b>System Settings → Privacy &amp; Security</b>, scroll to Accompanist and click <b>Open Anyway</b>.</p>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span class="wordmark small">Accompanist</span>
+    <nav>
+      <a href="https://hu-accompany-u4wd4ohuga-uc.a.run.app/privacy">Privacy</a>
+      <a href="https://hu-accompany-u4wd4ohuga-uc.a.run.app/terms">Terms</a>
+      <a href="mailto:support@accompanist.app">support@accompanist.app</a>
+      <a href="licenses.html">Credits &amp; licences</a>
+    </nav>
+  </footer>
+
+  <dialog id="summary" class="summary" aria-labelledby="sum-title">
+    <p class="kicker" id="sum-title">Your run</p>
+    <div class="sum-head">
+      <span id="sum-score" class="sum-score">0</span>
+      <span id="sum-right" class="sum-right"></span>
+    </div>
+    <ul class="sum-counts">
+      <li><i class="dot good"></i><b id="sum-perfect">0</b> perfect</li>
+      <li><i class="dot close"></i><b id="sum-close">0</b> a little off</li>
+      <li><i class="dot bad"></i><b id="sum-mistakes">0</b> mistakes</li>
+    </ul>
+    <button id="sum-review" class="btn btn-ink wide" type="button">See it on the score</button>
+    <div id="sum-list" class="sum-list"></div>
+    <div class="sum-install">
+      <p><strong>That was your free try.</strong> Keep practising with every score, as often as you like.</p>
+      <a class="btn btn-ink" href="#download" id="sum-download">Download Accompanist</a>
+    </div>
+    <button id="sum-close-btn" class="sum-x" type="button" aria-label="Close">×</button>
+  </dialog>
+
+  <script type="module" src="js/demo.js"></script>
+  <script>
+    document.getElementById('sum-download').addEventListener('click', function () {
+      document.getElementById('summary').close();
+    });
+  </script>
+</body>
+</html>

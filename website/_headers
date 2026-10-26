@@ -1,0 +1,12 @@
+# Cloudflare Pages response headers (https://developers.cloudflare.com/pages/configuration/headers/).
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: microphone=(self), camera=(), geolocation=()
+  X-Frame-Options: SAMEORIGIN
+
+# The engine and the score viewer change only with a deploy, but keep their names: revalidate daily.
+/engine/*
+  Cache-Control: public, max-age=86400
+/viewer/*
+  Cache-Control: public, max-age=86400
