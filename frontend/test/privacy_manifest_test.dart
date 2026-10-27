@@ -21,11 +21,10 @@ void main() {
   }
 
   test('declares exactly the data the app and server handle', () {
+    // The released build has no accounts (LOGIN_REQUIRED off). Turning them on adds the email address, name and
+    // user ID, all linked to the person, here and in the manifest.
     expect(collected(), {
-      'NSPrivacyCollectedDataTypeEmailAddress': true,
-      'NSPrivacyCollectedDataTypeName': true,
-      'NSPrivacyCollectedDataTypeUserID': true,
-      // Hum recordings and Talk mode requests are not tied to an account on the server.
+      // Hum recordings and practice notes are not tied to anyone on the server.
       'NSPrivacyCollectedDataTypeAudioData': false,
       'NSPrivacyCollectedDataTypeOtherUserContent': false,
       // Apple: a retained IP address must be declared by how it is used. Cloud Run's request log keeps it.

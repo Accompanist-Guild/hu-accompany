@@ -37,7 +37,7 @@ Set these once at **Settings > Secrets and variables > Actions**. The workflow p
 - **Not signed by Apple.** macOS shows a warning the first time; the release notes tell people how to allow it. Removing the warning needs an Apple Developer account (US$99/year) and a signing and notarizing step added to `release-macos.yml`.
 - **The Rust audio engine is built into the app.** `frontend/rust_builder` compiles `native_ffi` for both kinds of Mac during `flutter build macos`, which is why the release job installs the two Rust targets and why the build takes several minutes. The workflow's check step requires the app to log `rust: bridge initialized`, so a build that loses the engine fails instead of shipping. **Not tested by a person:** that the engine hears a real instrument. That needs a person to allow the microphone and play.
 - **Needs a server.** Hum mode, the library and the quiz talk to the Hu Accompany backend. With `SERVER_URL` set (see above) they use the deployed one. Without it, the app looks for a server on the local network, so a downloader sees "could not find the server". Deploying the backend is in `backend/deploy/README.md`.
-- **Bundle ID is still `com.example.huAccomponist`.** Changing it later makes macOS treat the app as a different one, and its saved data stays behind.
+- **Bundle ID is `app.accompanist`** (changed from Flutter's `com.example.huAccomponist` on 2026-10-27, before any public release). Don't change it again: macOS would treat the app as a different one and leave its saved data behind, and the App Store fixes it forever once the app is created there.
 
 ## Why Flutter is pinned
 

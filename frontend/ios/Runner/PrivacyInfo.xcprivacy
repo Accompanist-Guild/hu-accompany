@@ -9,46 +9,13 @@
 	<array/>
 
 	<!-- What leaves the phone for our server. Must match the public Privacy Policy (backend/legal/privacy.html)
-	     and the App Privacy answers in docs/app-store/submission-checklist.md. -->
+	     and the App Privacy answers in docs/app-store/submission-checklist.md.
+	     This is the app as released: no accounts (LOGIN_REQUIRED off) and no Talk mode (TALK_MODE off). Building
+	     with LOGIN_REQUIRED=true collects an email address, a name and a user ID (all linked to the person), so
+	     add those three types back first; TALK_MODE=true is already covered by the audio and user-content entries. -->
 	<key>NSPrivacyCollectedDataTypes</key>
 	<array>
-		<dict>
-			<key>NSPrivacyCollectedDataType</key>
-			<string>NSPrivacyCollectedDataTypeEmailAddress</string>
-			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
-			<key>NSPrivacyCollectedDataTypePurposes</key>
-			<array>
-				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
-			</array>
-		</dict>
-		<dict>
-			<key>NSPrivacyCollectedDataType</key>
-			<string>NSPrivacyCollectedDataTypeName</string>
-			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
-			<key>NSPrivacyCollectedDataTypePurposes</key>
-			<array>
-				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
-			</array>
-		</dict>
-		<dict>
-			<key>NSPrivacyCollectedDataType</key>
-			<string>NSPrivacyCollectedDataTypeUserID</string>
-			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
-			<key>NSPrivacyCollectedDataTypePurposes</key>
-			<array>
-				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
-			</array>
-		</dict>
-		<!-- Hum recordings (kept for a few hours) and Talk mode voice recordings (passed to ElevenLabs). -->
+		<!-- Hum recordings (kept for a few hours); with Talk mode on, also voice recordings (passed to ElevenLabs). -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeAudioData</string>
@@ -61,7 +28,7 @@
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
 		</dict>
-		<!-- Talk mode requests (sent to Google Gemini) and the notes detected while practising. -->
+		<!-- The notes detected while practising; with Talk mode on, also its requests (sent to Google Gemini). -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeOtherUserContent</string>

@@ -2,7 +2,11 @@
 
 The text lives in backend/legal/*.html as plain HTML with {{PLACEHOLDERS}}, filled in from settings on each
 request so the pages can't disagree with how the server is set up (who publishes it, where to write, how long
-hum recordings are kept). They need no key: anyone, including App Review, must be able to read them.
+hum recordings are kept, whether accounts and Talk mode exist). They need no key: anyone, including App Review,
+must be able to read them.
+
+`{{#LOGIN_REQUIRED}}...{{/LOGIN_REQUIRED}}` keeps its text only when that setting is on, `{{^LOGIN_REQUIRED}}...`
+only when it is off (the same for TALK_MODE). Sections do not nest.
 
 When you change what privacy.html or terms.html say, change EFFECTIVE_DATE too.
 """
@@ -15,8 +19,8 @@ from django.conf import settings
 from django.http import Http404, HttpResponse
 from django.views.decorators.http import require_safe
 
-APP_NAME = "Hu Accomponist"
-EFFECTIVE_DATE = "October 15, 2026"
+APP_NAME = "Accompanist"
+EFFECTIVE_DATE = "October 27, 2026"
 
 TITLES = {"privacy": "Privacy Policy", "terms": "Terms of Service", "support": "Support"}
 
@@ -26,6 +30,8 @@ CONTENT_SECURITY_POLICY = (
 )
 
 _TOKEN = re.compile(r"\{\{([A-Z_]+)\}\}")
+_SECTION = re.compile(r"\{\{([#^])([A-Z_]+)\}\}(.*?)\{\{/\2\}\}", re.S)
+SWITCHES = ("LOGIN_REQUIRED", "TALK_MODE")
 
 
 @lru_cache(maxsize=16)
@@ -49,8 +55,10 @@ def render(page: str) -> str:
         "SUPPORT_EMAIL": getattr(settings, "SUPPORT_EMAIL", ""),
         "HUM_RETENTION": _hours(float(getattr(settings, "HUM_TTL_HOURS", 3.0))),
     }
+    switches = {name: bool(getattr(settings, name, False)) for name in SWITCHES}
     # One pass over the whole page, so a value that happens to contain "{{...}}" is never expanded again.
     combined = _read("layout").replace("{{CONTENT}}", _read(page))
+    combined = _SECTION.sub(lambda m: m.group(3) if switches[m.group(2)] == (m.group(1) == "#") else "", combined)
     return _TOKEN.sub(lambda m: html.escape(str(values[m.group(1)]), quote=True), combined)
 
 

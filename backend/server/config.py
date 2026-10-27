@@ -53,6 +53,11 @@ def _positive_number(env: Mapping[str, str], name: str, default: float) -> float
     return value
 
 
+def _flag(env: Mapping[str, str], name: str, default: bool = False) -> bool:
+    raw = env.get(name, "").strip().lower()
+    return raw in ("1", "true", "yes") if raw else default
+
+
 def build_settings(env: Mapping[str, str]) -> dict:
     production = env.get("DJANGO_ENV") == "production" or bool(env.get("K_SERVICE"))
     app_key = env.get("APP_API_KEY", "")
@@ -60,6 +65,12 @@ def build_settings(env: Mapping[str, str]) -> dict:
     legal = {
         "LEGAL_PUBLISHER": env.get("LEGAL_PUBLISHER", "").strip() or "AG",
         "HUM_TTL_HOURS": _positive_number(env, "HUM_TTL_HOURS", 3.0),  # also how long server/janitor.py keeps hums
+        # The same switches the app is built with (--dart-define=LOGIN_REQUIRED / TALK_MODE). Off, as in the app,
+        # the pages leave out accounts and Talk mode, so they never describe a feature the released app lacks.
+        "LOGIN_REQUIRED": _flag(env, "LOGIN_REQUIRED"),
+        # Off, the server also refuses Talk mode, so nothing reaches Gemini or ElevenLabs while the policy leaves
+        # them out. On by default in development so a local server keeps working as before.
+        "TALK_MODE": _flag(env, "TALK_MODE", default=not production),
     }
 
     if not production:

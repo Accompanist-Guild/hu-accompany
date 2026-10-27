@@ -104,6 +104,18 @@ class ConfigTests(SimpleTestCase):
         self.assertEqual(cfg["HUM_TTL_HOURS"], 3.0)
         self.assertTrue(cfg["SUPPORT_EMAIL"].endswith(".invalid"))  # visibly a placeholder, never a real address
 
+    def test_accounts_and_talk_mode_are_off_in_production_unless_switched_on(self):
+        # The same defaults as the app's build switches, so the pages describe the app people download.
+        cfg = build_settings(PROD)
+        self.assertEqual((cfg["LOGIN_REQUIRED"], cfg["TALK_MODE"]), (False, False))
+        cfg = build_settings(PROD | {"LOGIN_REQUIRED": "true", "TALK_MODE": "True"})
+        self.assertEqual((cfg["LOGIN_REQUIRED"], cfg["TALK_MODE"]), (True, True))
+
+    def test_a_development_server_keeps_talk_mode_unless_told_otherwise(self):
+        self.assertIs(build_settings({})["TALK_MODE"], True)
+        self.assertIs(build_settings({"TALK_MODE": "false"})["TALK_MODE"], False)
+        self.assertIs(build_settings({})["LOGIN_REQUIRED"], False)
+
     def test_the_legal_pages_settings_can_be_changed(self):
         cfg = build_settings({"LEGAL_PUBLISHER": "Someone Else", "SUPPORT_EMAIL": "me@example.org", "HUM_TTL_HOURS": "1.5"})
         self.assertEqual((cfg["LEGAL_PUBLISHER"], cfg["SUPPORT_EMAIL"], cfg["HUM_TTL_HOURS"]), ("Someone Else", "me@example.org", 1.5))
@@ -460,6 +472,10 @@ import re
 from html.parser import HTMLParser
 
 LEGAL_SETTINGS = dict(LEGAL_PUBLISHER="AG", SUPPORT_EMAIL="help@example.org", HUM_TTL_HOURS=3.0)
+# Most page tests read the pages with every feature on, so every passage is checked; LaunchLegalPagesTests reads
+# them as the first release ships (no accounts, no Talk mode).
+ALL_FEATURES = dict(LOGIN_REQUIRED=True, TALK_MODE=True)
+NO_FEATURES = dict(LOGIN_REQUIRED=False, TALK_MODE=False)
 
 
 class _Outline(HTMLParser):
@@ -511,7 +527,7 @@ def outline(html):
     return parser
 
 
-@override_settings(ROOT_URLCONF="server.tests", MIDDLEWARE=[], ALLOWED_HOSTS=["testserver"], **LEGAL_SETTINGS)
+@override_settings(ROOT_URLCONF="server.tests", MIDDLEWARE=[], ALLOWED_HOSTS=["testserver"], **LEGAL_SETTINGS, **ALL_FEATURES)
 class LegalPagesTests(SimpleTestCase):
     """The pages are plain HTML in backend/legal/, filled in from settings, so what they say about
     the publisher, the contact address and how long hums are kept can't drift from the server's setup."""
@@ -688,3 +704,52 @@ class LegalPagesTests(SimpleTestCase):
         html = self.text("support")
         for phrase in ("Delete account", "Export my data", "microphone", "Settings"):
             self.assertIn(phrase.lower(), html.lower(), phrase)
+
+
+@override_settings(ROOT_URLCONF="server.tests", MIDDLEWARE=[], ALLOWED_HOSTS=["testserver"], **LEGAL_SETTINGS, **NO_FEATURES)
+class LaunchLegalPagesTests(SimpleTestCase):
+    """The pages as the first release ships: no accounts and no Talk mode. App Review compares them with the app,
+    so they must not send people to buttons it hides or name services it never uses."""
+
+    PAGES = LegalPagesTests.PAGES
+
+    def text(self, name):
+        response = self.client.get(f"/{name}")
+        self.assertEqual(response.status_code, 200, name)
+        return response.content.decode()
+
+    def test_every_combination_of_switches_renders_cleanly(self):
+        for accounts in (False, True):
+            for talk in (False, True):
+                with override_settings(LOGIN_REQUIRED=accounts, TALK_MODE=talk):
+                    for name in self.PAGES:
+                        html = self.text(name)
+                        self.assertNotIn("{{", html, (name, accounts, talk))
+                        self.assertNotIn("}}", html, (name, accounts, talk))
+                        self.assertEqual(outline(html).problems, [], (name, accounts, talk))
+
+    def test_nothing_mentions_accounts_or_talk_mode(self):
+        for name in self.PAGES:
+            html = self.text(name)
+            for gone in ("hashed", "your password", "Delete account", "Export my data", "sign-in token", "Talk mode", "Gemini",
+                         "ElevenLabs", "18 or older"):
+                self.assertNotIn(gone.lower(), html.lower(), f"{name} still says {gone!r}")
+
+    def test_the_policy_says_there_are_no_accounts_and_still_names_who_runs_the_service(self):
+        html = self.text("privacy")
+        self.assertIn("there are no accounts", html.lower())
+        section = html.split("<h2>Who receives your information</h2>")[1].split("<h2>")[0]
+        for processor in ("Google Cloud", "Neon", "Cloudflare"):
+            self.assertIn(f"<strong>{processor}</strong>", section, processor)
+        for phrase in ("microphone", "humming", "do not sell", "advertising", "under 13", "HTTPS", "website"):
+            self.assertIn(phrase.lower(), html.lower(), phrase)
+
+    def test_the_pages_cover_the_mac_as_well_as_the_iphone(self):
+        for name in ("privacy", "support"):
+            self.assertIn("System Settings", self.text(name), name)
+
+    def test_the_app_is_called_by_its_public_name(self):
+        for name in self.PAGES:
+            html = self.text(name)
+            self.assertIn("Accompanist", html, name)
+            self.assertNotIn("Accomponist", html, name)

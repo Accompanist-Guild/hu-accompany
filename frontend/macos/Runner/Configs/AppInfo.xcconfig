@@ -8,7 +8,7 @@
 PRODUCT_NAME = Accompanist
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.example.huAccomponist
+PRODUCT_BUNDLE_IDENTIFIER = app.accompanist
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.

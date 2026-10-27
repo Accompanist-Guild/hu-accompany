@@ -192,6 +192,7 @@
 				97C146EC1CF9000F007C117D /* Resources */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
+				A5C0FFEE2E9F3A1000ACC0DE /* Strip local network keys */,
 			);
 			buildRules = (
 			);
@@ -300,6 +301,22 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build\n";
+		};
+		A5C0FFEE2E9F3A1000ACC0DE /* Strip local network keys */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}",
+			);
+			name = "Strip local network keys";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# A Release build talks to the fixed SERVER_URL and never searches the local network, so it drops the three\n# entries that exist only for that search. App Review asks about a local-network permission an app never uses.\n# Debug builds keep them, so a phone can still find a server on your laptop.\n[ \"$CONFIGURATION\" = \"Release\" ] || exit 0\nplist=\"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\nfor key in NSLocalNetworkUsageDescription NSBonjourServices NSAppTransportSecurity:NSAllowsLocalNetworking; do\n  /usr/libexec/PlistBuddy -c \"Delete :$key\" \"$plist\" 2>/dev/null || true\ndone\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -436,7 +453,7 @@
 					"-force_load",
 					"$(PROJECT_DIR)/libnative_ffi_sim.a",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.huAccomponist;
+				PRODUCT_BUNDLE_IDENTIFIER = app.accompanist;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
@@ -457,7 +474,7 @@
 					"$(PROJECT_DIR)",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.huAccomponist.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = app.accompanist.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -479,7 +496,7 @@
 					"$(PROJECT_DIR)",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.huAccomponist.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = app.accompanist.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Runner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Runner";
@@ -499,7 +516,7 @@
 					"$(PROJECT_DIR)",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.huAccomponist.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = app.accompanist.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Runner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Runner";
@@ -648,7 +665,7 @@
 					"-force_load",
 					"$(PROJECT_DIR)/libnative_ffi_sim.a",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.huAccomponist;
+				PRODUCT_BUNDLE_IDENTIFIER = app.accompanist;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -688,7 +705,7 @@
 					"-force_load",
 					"$(PROJECT_DIR)/libnative_ffi_sim.a",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.huAccomponist;
+				PRODUCT_BUNDLE_IDENTIFIER = app.accompanist;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;

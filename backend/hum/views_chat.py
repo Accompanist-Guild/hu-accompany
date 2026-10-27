@@ -18,6 +18,7 @@ import json
 import logging
 import threading
 
+from django.conf import settings
 from django.http import HttpRequest, JsonResponse, StreamingHttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
@@ -49,6 +50,14 @@ def get_services() -> ChatServices:
         return _services
 
 
+def _talk_mode_off():
+    """Talk mode is switched off on this server (TALK_MODE), and the privacy policy then leaves out the services
+    it uses, so nothing may be sent to them."""
+    if settings.TALK_MODE:
+        return None
+    return error("Talk mode is off on this server.", 404, "talk_mode_off")
+
+
 def reset_services(services: ChatServices | None = None) -> None:
     """Replaces the services (tests hand in fakes) or clears them so the keys are read again."""
     global _services
@@ -59,6 +68,8 @@ def reset_services(services: ChatServices | None = None) -> None:
 @csrf_exempt
 @require_POST
 def chat(request: HttpRequest):
+    if (off := _talk_mode_off()) is not None:
+        return off
     audio = request.FILES.get("audio")
     try:
         if audio is not None:
@@ -85,6 +96,8 @@ def chat(request: HttpRequest):
 
 @require_GET
 def speech(request: HttpRequest, reply_id: str):
+    if (off := _talk_mode_off()) is not None:
+        return off
     services = get_services()
     text = services.replies.get(reply_id)
     if text is None:

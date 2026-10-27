@@ -1,17 +1,18 @@
-<p>Need help with {{APP_NAME}}, found a bug, or want to send feedback? Write to <a href="mailto:{{SUPPORT_EMAIL}}">{{SUPPORT_EMAIL}}</a> and tell us what happened and which iPhone and iOS version you have. We aim to reply within a week.</p>
+<p>Need help with {{APP_NAME}}, found a bug, or want to send feedback? Write to <a href="mailto:{{SUPPORT_EMAIL}}">{{SUPPORT_EMAIL}}</a> and tell us what happened and which device (iPhone or Mac) and system version you have. We aim to reply within a week.</p>
 
 <h2>Common questions</h2>
 
-<h3>How do I delete my account?</h3>
+{{#LOGIN_REQUIRED}}<h3>How do I delete my account?</h3>
 <p>In the app, open Settings and tap Delete account. This permanently removes your account and signs you out everywhere. You can also ask us by email.</p>
 
 <h3>How do I get a copy of my data?</h3>
-<p>In the app, open Settings and tap Export my data. You get a file with what we hold about your account.</p>
+<p>In the app, open Settings and tap Export my data. You get a file with what we hold about your account.</p>{{/LOGIN_REQUIRED}}{{^LOGIN_REQUIRED}}<h3>Do I need an account?</h3>
+<p>No. The app has no accounts: your shelf, hums and songs are kept on your device. Deleting the app removes them.</p>{{/LOGIN_REQUIRED}}
 
 <h3>The app can't hear me, or says the microphone is off</h3>
-<p>Open the iOS Settings app, choose {{APP_NAME}}, and switch Microphone on. Also check that no other app, call or recording is using the microphone, then try again.</p>
+<p>On iPhone, open the Settings app, choose {{APP_NAME}}, and switch Microphone on. On a Mac, open System Settings, then Privacy &amp; Security, then Microphone, and switch {{APP_NAME}} on. Also check that no other app, call or recording is using the microphone, then try again.</p>
 
-<h3>A hum or a spoken reply "isn't on the server any more"</h3>
+<h3>A hum{{#TALK_MODE}} or a spoken reply{{/TALK_MODE}} "isn't on the server any more"</h3>
 <p>For your privacy, hum recordings and the files made from them are deleted automatically about {{HUM_RETENTION}} after they were last used. Hum again to start a new one.</p>
 
 <h3>The app can't reach the server</h3>

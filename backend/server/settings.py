@@ -24,6 +24,8 @@ RATE_LIMIT_DEFAULT_PER_MINUTE = _config["RATE_LIMIT_DEFAULT_PER_MINUTE"]
 LEGAL_PUBLISHER = _config["LEGAL_PUBLISHER"]
 SUPPORT_EMAIL = _config["SUPPORT_EMAIL"]
 HUM_TTL_HOURS = _config["HUM_TTL_HOURS"]  # how long hum files are kept; stated in the privacy policy
+LOGIN_REQUIRED = _config["LOGIN_REQUIRED"]  # whether the pages describe accounts
+TALK_MODE = _config["TALK_MODE"]  # whether the pages describe Talk mode (Gemini, ElevenLabs)
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",

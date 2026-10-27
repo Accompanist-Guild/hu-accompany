@@ -86,6 +86,22 @@ class ChatTests(HumTestCase):
         speech = self.client.get(f"/api/hum/chat/speech/{body['speech_id']}")
         self.assertEqual(speech.status_code, 503)
 
+    def test_nothing_is_sent_anywhere_while_talk_mode_is_off(self):
+        # The privacy policy leaves out Gemini and ElevenLabs when TALK_MODE is off, so the server must not use them.
+        gemini, ears = FakeGemini(), FakeEars()
+        self.use(gemini=gemini, ears=ears)
+        with self.settings(TALK_MODE=False):
+            typed = self.post_json("/api/hum/chat", {"text": "faster", "project": self.project})
+            spoken = self.client.post("/api/hum/chat", {
+                "audio": SimpleUploadedFile("chat.wav", b"RIFF", content_type="audio/wav"),
+                "state": json.dumps({"project": self.project}),
+            })
+            speech = self.client.get("/api/hum/chat/speech/anything")
+        for response in (typed, spoken, speech):
+            self.assertEqual(response.status_code, 404)
+            self.assertEqual(response.json()["code"], "talk_mode_off")
+        self.assertEqual((gemini.calls, ears.calls), ([], []))
+
     def test_bad_requests(self):
         self.use()
         self.assertEqual(self.post_json("/api/hum/chat", {"text": "hi"}).status_code, 400)
