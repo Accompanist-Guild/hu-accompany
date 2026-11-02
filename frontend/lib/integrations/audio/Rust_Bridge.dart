@@ -38,6 +38,10 @@ abstract final class RustBridge {
   /// assume a stream will ever produce anything.
   static bool get isAvailable => _available;
 
+  /// Why initialization failed, when it did.
+  static String? get error => _error;
+  static String? _error;
+
   /// Safe to call repeatedly; the work happens once.
   static Future<void> ensureInitialized() async {
     if (_initialized) return;
@@ -55,6 +59,7 @@ abstract final class RustBridge {
       debugPrint('[Diagnostics] rust: bridge initialized.');
     } catch (e) {
       _available = false;
+      _error = '$e';
       debugPrint('[Diagnostics] rust: bridge unavailable — $e');
     }
   }

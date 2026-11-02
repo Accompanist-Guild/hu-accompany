@@ -161,7 +161,13 @@ jobs:
         working-directory: frontend
         run: |
           flutter pub get
-          flutter test integration_test/simple_test.dart -d windows
+          # The runner reports only pass or fail on Windows; the test writes what it found here, printed either way.
+          report="$(cygpath -m "$RUNNER_TEMP")/startup-report.txt"
+          status=0
+          flutter test integration_test/simple_test.dart -d windows "--dart-define=TEST_REPORT=$report" || status=$?
+          echo "== What the startup test found =="
+          cat "$report" 2>/dev/null || echo "(no report: the app never got as far as the checks)"
+          exit $status
 
       - name: Build the app
         working-directory: frontend
