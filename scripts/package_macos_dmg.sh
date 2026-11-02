@@ -4,7 +4,7 @@
 #
 #   scripts/package_macos_dmg.sh <path/to/App.app> <output.dmg>
 #
-# Used by .github/workflows/release-macos.yml; run it by hand to test a release locally.
+# Used by .github/workflows/release.yml; run it by hand to test a release locally.
 set -euo pipefail
 
 if [ "$#" -ne 2 ]; then

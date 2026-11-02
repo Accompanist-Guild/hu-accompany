@@ -30,8 +30,8 @@ class AudioProblem {
 /// `audio_error_message` are marked `#[frb(ignore)]` and exported as plain C
 /// symbols, which ios/recording_bridge.c re-exports under the stable names
 /// `start_recording` / `stop_recording` / `recording_status` /
-/// `recording_message`. The macOS build has no such file: there the engine
-/// is its own framework (rust_builder), so its own names are used. Either
+/// `recording_message`. The macOS and Windows builds have no such file: there
+/// the engine is its own library (rust_builder), so its own names are used. Either
 /// way src/rust/api.dart has no start/stop function to call — it only
 /// exposes initSession, getUserData and notesStream — and capture has to be
 /// driven through here.
@@ -79,7 +79,7 @@ class AudioNative {
 
   void _init() {
     try {
-      if (Platform.isMacOS) {
+      if (Platform.isMacOS || Platform.isWindows) {
         _bindEngine();
         return;
       }
@@ -112,12 +112,16 @@ class AudioNative {
     }
   }
 
-  /// The engine's own entry points (see native_ffi/src/lib.rs), from the
-  /// framework flutter_rust_bridge has already loaded, or loaded here.
+  /// The engine's own entry points (see native_ffi/src/lib.rs): on macOS
+  /// from the framework flutter_rust_bridge has already loaded, or loaded
+  /// here; on Windows from native_ffi.dll beside the app (cargokit names it
+  /// after the crate).
   void _bindEngine() {
     const stem = 'rust_lib_hu_accomponist';
     var library = ffi.DynamicLibrary.process();
-    if (!library.providesSymbol('listen_audio')) {
+    if (Platform.isWindows) {
+      library = ffi.DynamicLibrary.open('native_ffi.dll');
+    } else if (!library.providesSymbol('listen_audio')) {
       library = ffi.DynamicLibrary.open('$stem.framework/$stem');
     }
     _startRecording = library
@@ -135,12 +139,16 @@ class AudioNative {
           int Function(ffi.Pointer<ffi.Uint8>, int)
         >('audio_error_message');
     // One buffer for the message, kept for the life of the app (what
-    // recording_bridge.c's static buffer is on iOS).
-    final malloc = ffi.DynamicLibrary.process()
-        .lookupFunction<
-          ffi.Pointer<ffi.Uint8> Function(ffi.Size),
-          ffi.Pointer<ffi.Uint8> Function(int)
-        >('malloc');
+    // recording_bridge.c's static buffer is on iOS). Windows keeps the C
+    // runtime's malloc in its own system library.
+    final malloc =
+        (Platform.isWindows
+                ? ffi.DynamicLibrary.open('ucrtbase.dll')
+                : ffi.DynamicLibrary.process())
+            .lookupFunction<
+              ffi.Pointer<ffi.Uint8> Function(ffi.Size),
+              ffi.Pointer<ffi.Uint8> Function(int)
+            >('malloc');
     final buffer = malloc(_messageCapacity);
     _recordingMessage = () {
       if (buffer == ffi.nullptr) return ffi.nullptr;
@@ -148,7 +156,9 @@ class AudioNative {
       return buffer;
     };
     isConnected = true;
-    debugPrint('[Diagnostics] audio: engine connected (macOS).');
+    debugPrint(
+      '[Diagnostics] audio: engine connected (${Platform.operatingSystem}).',
+    );
   }
 
   static const int _messageCapacity = 256;

@@ -55,6 +55,12 @@ class ConfigTests(SimpleTestCase):
         cfg = build_settings({"RATE_LIMIT_HUM_PER_MINUTE": "5"})
         self.assertEqual(cfg["RATE_LIMIT_HUM_PER_MINUTE"], 5)
 
+    def test_only_the_website_reads_the_library_from_a_browser_in_production(self):
+        self.assertEqual(build_settings(PROD)["WEBSITE_ORIGINS"], ["https://accompanist.app", "https://www.accompanist.app"])
+        self.assertEqual(build_settings({**PROD, "WEBSITE_ORIGINS": "https://a.example, https://b.example"})["WEBSITE_ORIGINS"],
+                         ["https://a.example", "https://b.example"])
+        self.assertEqual(build_settings({})["WEBSITE_ORIGINS"], ["*"])
+
     def test_production_switch_by_django_env(self):
         self.assertIs(build_settings(PROD)["IS_PRODUCTION"], True)
 
@@ -188,10 +194,14 @@ urlpatterns = [
     path("api/ping", _ok),
     path("api/hum/ping", _ok),
     path("api/hum/talk/speech/<str:reply_id>", _ok),
+    path("api/scores/search", _ok),
+    path("api/scores/<int:score_id>/musicxml", _ok),
+    path("api/scores/<int:score_id>/other", _ok),
 ]
 
 GATE = [
     "server.middleware.HealthCheckMiddleware",
+    "server.middleware.WebsiteCorsMiddleware",
     "server.middleware.RateLimitMiddleware",
     "server.middleware.AppKeyMiddleware",
 ]
@@ -259,6 +269,40 @@ class MiddlewareTests(SimpleTestCase):
             self.assertEqual(c.get("/privacy/other").status_code, 401)
             self.assertEqual(c.get("/privacyx").status_code, 401)
             self.assertEqual(c.get("/api/ping").status_code, 401)
+
+    def test_the_score_library_is_readable_without_a_key_but_nothing_else_of_it(self):
+        # The website plays any score in the browser, which can't keep a key.
+        with override_settings(APP_API_KEY="secret"):
+            c = self.fresh_client()
+            self.assertEqual(c.get("/api/scores/search?q=bach").status_code, 200)
+            self.assertEqual(c.get("/api/scores/12/musicxml").status_code, 200)
+            self.assertEqual(c.post("/api/scores/search").status_code, 401)
+            self.assertEqual(c.get("/api/scores/12/other").status_code, 401)
+            self.assertEqual(c.get("/api/scores/x/musicxml").status_code, 401)
+
+    def test_the_score_library_is_still_rate_limited(self):
+        with override_settings(APP_API_KEY="secret", RATE_LIMIT_DEFAULT_PER_MINUTE=2):
+            c = self.fresh_client()
+            self.assertEqual([c.get("/api/scores/search?q=a").status_code for _ in range(3)], [200, 200, 429])
+
+    def test_only_the_website_may_read_the_library_from_a_browser(self):
+        with override_settings(WEBSITE_ORIGINS=["https://accompanist.app"]):
+            c = self.fresh_client()
+            site = c.get("/api/scores/search?q=a", HTTP_ORIGIN="https://accompanist.app")
+            other = c.get("/api/scores/search?q=a", HTTP_ORIGIN="https://evil.example")
+            not_library = c.get("/api/ping", HTTP_ORIGIN="https://accompanist.app")
+        self.assertEqual(site["Access-Control-Allow-Origin"], "https://accompanist.app")
+        self.assertNotIn("Access-Control-Allow-Origin", other)
+        self.assertNotIn("Access-Control-Allow-Origin", not_library)
+
+    def test_the_website_can_read_a_429_too(self):
+        # Otherwise the browser reports a bare network error and the page can't say "try again shortly".
+        with override_settings(WEBSITE_ORIGINS=["https://accompanist.app"], RATE_LIMIT_DEFAULT_PER_MINUTE=1):
+            c = self.fresh_client()
+            c.get("/api/scores/1/musicxml")
+            response = c.get("/api/scores/1/musicxml", HTTP_ORIGIN="https://accompanist.app")
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response["Access-Control-Allow-Origin"], "https://accompanist.app")
 
     def test_the_public_pages_are_still_rate_limited(self):
         with override_settings(APP_API_KEY="secret", RATE_LIMIT_DEFAULT_PER_MINUTE=2):
@@ -360,8 +404,18 @@ class RealUrlConfTests(SimpleTestCase):
 
     def test_a_real_route_is_closed_without_the_key_and_open_with_it(self):
         c = Client()
-        self.assertEqual(c.get("/api/scores/search?q=bach").status_code, 401)
+        self.assertEqual(c.get("/api/quiz/topics").status_code, 401)
         self.assertEqual(c.get("/api/quiz/topics", HTTP_X_APP_KEY="secret").status_code, 200)
+
+    def test_the_public_library_paths_are_the_real_score_routes(self):
+        # PUBLIC_READ is a pattern of its own, so check it still names the routes in scores/urls.py.
+        from django.urls import resolve
+        from scores import views as score_views
+        from server.middleware import PUBLIC_READ
+        for url, view in (("/api/scores/search", score_views.search_view),
+                          ("/api/scores/8836/musicxml", score_views.musicxml_view)):
+            self.assertIs(resolve(url).func, view, url)
+            self.assertTrue(PUBLIC_READ.match(url), url)
 
     def test_the_legal_pages_are_public_on_the_real_server(self):
         c = Client()

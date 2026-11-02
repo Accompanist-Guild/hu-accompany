@@ -1,8 +1,11 @@
-"""What stands between the internet and the routes: a health check, a rate
-limit, and the app key. Listed in this order in settings.MIDDLEWARE.
+"""What stands between the internet and the routes: a health check, the
+website's cross-origin header, a rate limit, and the app key. Listed in this
+order in settings.MIDDLEWARE.
 
 * Health check first, so Cloud Run's probe is answered without a key, without
   counting against any limit, and even though its Host header would be refused.
+* The website header next, so even a 429 or 401 reaches the website's script
+  as a readable error instead of a bare network failure.
 * Rate limit before the key check, so someone guessing keys is throttled
   instead of getting unlimited tries.
 * Settings are read on every request, so tests can change them, and a limit or
@@ -14,6 +17,7 @@ gets through to it.
 
 import hmac
 import math
+import re
 import threading
 import time
 from collections import deque
@@ -28,6 +32,9 @@ HUM_PREFIX = "/api/hum/"
 KEY_EXEMPT_GET_PREFIX = "/api/hum/talk/speech/"
 # The privacy policy, terms and support pages (server/legal.py) are for anyone, including App Review.
 PUBLIC_PAGES = ("/privacy", "/terms", "/support")
+# The score library, read only: the website (accompanist.app) lets visitors play any score in the browser, and a
+# browser can't keep a key secret. The key is in every downloaded app anyway; the rate limit still applies.
+PUBLIC_READ = re.compile(r"^/api/scores/(search|\d+/musicxml)$")
 
 
 class RateLimiter:
@@ -93,6 +100,26 @@ class HealthCheckMiddleware:
         return self.get_response(request)
 
 
+class WebsiteCorsMiddleware:
+    """Lets the website's pages read the public score routes (PUBLIC_READ) from the visitor's browser.
+
+    Only GETs without custom headers are ever made, which browsers send without a preflight, so the one
+    response header is all it takes. Other origins and other routes get nothing extra.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        origin = request.META.get("HTTP_ORIGIN", "")
+        allowed = getattr(settings, "WEBSITE_ORIGINS", [])
+        if origin and PUBLIC_READ.match(request.path) and ("*" in allowed or origin in allowed):
+            response["Access-Control-Allow-Origin"] = origin
+            response["Vary"] = "Origin"
+        return response
+
+
 class RateLimitMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
@@ -131,7 +158,9 @@ class AppKeyMiddleware:
     @staticmethod
     def _allowed(request, key: str) -> bool:
         if request.method in ("GET", "HEAD") and (
-            request.path.startswith(KEY_EXEMPT_GET_PREFIX) or request.path.rstrip("/") in PUBLIC_PAGES
+            request.path.startswith(KEY_EXEMPT_GET_PREFIX)
+            or request.path.rstrip("/") in PUBLIC_PAGES
+            or PUBLIC_READ.match(request.path)
         ):
             return True
         provided = request.META.get("HTTP_X_APP_KEY", "")

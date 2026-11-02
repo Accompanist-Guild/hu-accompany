@@ -1,0 +1,236 @@
+name: Release
+
+# Push a tag like v0.1.0 to publish a GitHub Release with the macOS and Windows apps attached. See docs/releasing.md.
+# "Run workflow" (manual) builds the same things but only keeps them as downloads on the run page, so you can try
+# the pipeline without publishing anything.
+#
+# The files have fixed names (Accompanist-macos.dmg, Accompanist-windows-setup.exe), so the website can link to
+# .../releases/latest/download/<name> and always hand out the newest one.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Work out the version
+        id: version
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            # Manual run: take the number from pubspec.yaml ("0.1.0+1" -> "0.1.0").
+            version="$(sed -n 's/^version: *\([0-9.]*\).*/\1/p' frontend/pubspec.yaml)"
+          fi
+          # The version ends up in file names and shell commands below, so refuse anything but plain 1.2.3 (or
+          # 1.2.3-beta.1) rather than trust whatever the tag was called.
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::'$version' is not a version like 1.2.3 or 1.2.3-beta.1"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  macos:
+    needs: [verify, version]
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.2
+          channel: stable
+          cache: true
+
+      # The audio engine (native_ffi) is compiled during the app build, once for each kind of Mac.
+      - name: Add the Rust targets for Intel and Apple silicon Macs
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Build the app
+        working-directory: frontend
+        env: &build-settings
+          # Set these under Settings > Secrets and variables > Actions > Variables. Left unset, the app keeps its
+          # built-in placeholder addresses (see lib/config/app_constants.dart).
+          PRIVACY_POLICY_URL: ${{ vars.PRIVACY_POLICY_URL }}
+          TERMS_OF_SERVICE_URL: ${{ vars.TERMS_OF_SERVICE_URL }}
+          SUPPORT_EMAIL: ${{ vars.SUPPORT_EMAIL }}
+          # Where the deployed backend is (variable), the key it expects (secret), and whether Talk mode is in
+          # this build (variable, "true" to turn it on; unset leaves it out).
+          SERVER_URL: ${{ vars.SERVER_URL }}
+          APP_KEY: ${{ secrets.APP_KEY }}
+          TALK_MODE: ${{ vars.TALK_MODE }}
+          # Where the app looks for a newer version on starting (lib/integrations/updates/update_checker.dart).
+          UPDATE_FEED: https://api.github.com/repos/${{ github.repository }}/releases/latest
+        run: |
+          source ../scripts/release_defines.sh
+          flutter pub get
+          flutter build macos --release \
+            --build-name="$VERSION" \
+            --build-number="$GITHUB_RUN_NUMBER" \
+            "${defines[@]}"
+
+      - name: Package the .dmg
+        run: scripts/package_macos_dmg.sh frontend/build/macos/Build/Products/Release/Accompanist.app Accompanist-macos.dmg
+
+      - name: Check the packaged app
+        run: |
+          mount="$(hdiutil attach -nobrowse -readonly Accompanist-macos.dmg | tail -1 | awk -F'\t' '{print $NF}')"
+          app="$mount/Accompanist.app"
+
+          # Cheap, exact checks first: signature intact, both Mac CPU types present, and the microphone permission
+          # reached the signed app (without it, recording fails silently in the sandbox).
+          codesign --verify --deep --strict "$app"
+          archs="$(lipo -archs "$app/Contents/MacOS/Accompanist")"
+          case "$archs" in *arm64*x86_64*|*x86_64*arm64*) ;; *) echo "::error::Not a universal build: $archs"; exit 1 ;; esac
+          codesign -d --entitlements - "$app" 2>&1 | grep -q 'com.apple.security.device.audio-input' \
+            || { echo "::error::Microphone entitlement missing from the built app"; exit 1; }
+          /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Contents/Info.plist" >/dev/null
+          # The version the update check compares against.
+          shown="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          [ "$shown" = "$VERSION" ] || { echo "::error::The app says it is version '$shown', not $VERSION"; exit 1; }
+
+          # Then start it, make sure it is still running a few seconds later, and that it found the Rust audio
+          # engine (the app logs "rust: bridge initialized" when it does, "bridge unavailable" when it doesn't).
+          log="$RUNNER_TEMP/app.log"
+          "$app/Contents/MacOS/Accompanist" > "$log" 2>&1 &
+          pid=$!
+          sleep 10
+          if ! kill -0 "$pid" 2>/dev/null; then
+            echo "::error::The app exited within 10 seconds of starting"
+            cat "$log"
+            exit 1
+          fi
+          kill "$pid"
+          hdiutil detach -quiet "$mount"
+          grep -q 'rust: bridge initialized' "$log" || { echo "::error::The Rust audio engine was not found in the app"; cat "$log"; exit 1; }
+
+      - name: Keep the files on the run page
+        uses: actions/upload-artifact@v7
+        with:
+          name: Accompanist-macos
+          path: Accompanist-macos.dmg
+
+  windows:
+    needs: [verify, version]
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.2
+          channel: stable
+          cache: true
+
+      # Runs the app on Windows and requires the Rust engine to load (integration_test/simple_test.dart). Nothing
+      # else checks the Windows build before people download it.
+      - name: Start the app with its Rust engine
+        working-directory: frontend
+        run: |
+          flutter pub get
+          flutter test integration_test/simple_test.dart -d windows
+
+      - name: Build the app
+        working-directory: frontend
+        env: *build-settings
+        run: |
+          source ../scripts/release_defines.sh
+          flutter build windows --release \
+            --build-name="$VERSION" \
+            --build-number="$GITHUB_RUN_NUMBER" \
+            "${defines[@]}"
+
+      - name: Add the Visual C++ runtime and check what the app needs is there
+        working-directory: frontend/build/windows/x64/runner/Release
+        run: |
+          # Flutter apps need it, and a fresh Windows may not have it; it may be shipped beside the app.
+          for dll in msvcp140.dll vcruntime140.dll vcruntime140_1.dll; do cp "/c/Windows/System32/$dll" .; done
+          # The Rust engine, the score view and Hum playback each bring a library of their own.
+          for f in Accompanist.exe native_ffi.dll WebView2Loader.dll libmpv-2.dll data/flutter_assets/assets/osmd/osmd_viewer.html; do
+            [ -e "$f" ] || { echo "::error::$f is missing from the Windows build"; ls -R; exit 1; }
+          done
+
+      - name: Make the installer
+        run: |
+          choco install innosetup --no-progress -y
+          "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" -Q \
+            "-DAppVersion=$VERSION" \
+            "-DSourceDir=$(cygpath -w "$PWD/frontend/build/windows/x64/runner/Release")" \
+            "-DOutputDir=$(cygpath -w "$PWD")" \
+            scripts/windows_installer.iss
+
+      - name: Check the installer
+        shell: pwsh
+        run: |
+          $setup = Start-Process -FilePath .\Accompanist-windows-setup.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -PassThru -Wait
+          if ($setup.ExitCode -ne 0) { throw "The installer failed with exit code $($setup.ExitCode)" }
+          $exe = "$env:LOCALAPPDATA\Programs\Accompanist\Accompanist.exe"
+          if (-not (Test-Path $exe)) { throw "The installer did not put Accompanist.exe in place" }
+          $shown = (Get-Item $exe).VersionInfo.ProductVersion
+          if (-not $shown.StartsWith($env:VERSION.Split('-')[0])) { throw "The app says it is version '$shown', not $env:VERSION" }
+          $app = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 15
+          if ($app.HasExited) { throw "The app exited within 15 seconds of starting (exit code $($app.ExitCode))" }
+          Stop-Process -Id $app.Id
+
+      - name: Keep the files on the run page
+        uses: actions/upload-artifact@v7
+        with:
+          name: Accompanist-windows
+          path: Accompanist-windows-setup.exe
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: [version, macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to create the release and attach files
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v7
+        with:
+          merge-multiple: true
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          files=(Accompanist-macos.dmg Accompanist-windows-setup.exe)
+          sha256sum "${files[@]}" > SHA256SUMS.txt
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Re-running a tag's workflow replaces the files instead of failing.
+            gh release upload "$TAG" "${files[@]}" SHA256SUMS.txt --clobber
+          else
+            # A tag like v1.2.3-beta.1 is published as a pre-release: the website's links and the apps' update
+            # check only ever see full releases.
+            prerelease=()
+            [[ "$TAG" == *-* ]] && prerelease=(--prerelease)
+            gh release create "$TAG" "${files[@]}" SHA256SUMS.txt \
+              --title "Accompanist $TAG" \
+              --notes-file .github/release-notes.md \
+              --generate-notes \
+              "${prerelease[@]}"
+          fi

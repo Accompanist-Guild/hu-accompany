@@ -28,6 +28,8 @@ PLACEHOLDER_DOMAINS = (".invalid", ".example", ".test", ".localhost")
 # (Gemini, ElevenLabs), so they get a much tighter budget than the rest.
 PRODUCTION_RATE_LIMIT_HUM = 30
 PRODUCTION_RATE_LIMIT_DEFAULT = 120
+# The website, whose demo reads the score library from the visitor's browser.
+PRODUCTION_WEBSITE_ORIGINS = ["https://accompanist.app", "https://www.accompanist.app"]
 
 
 def _number(env: Mapping[str, str], name: str, default: int) -> int:
@@ -58,6 +60,11 @@ def _flag(env: Mapping[str, str], name: str, default: bool = False) -> bool:
     return raw in ("1", "true", "yes") if raw else default
 
 
+def _list(env: Mapping[str, str], name: str, default: list[str]) -> list[str]:
+    items = [item.strip() for item in env.get(name, "").split(",") if item.strip()]
+    return items or default
+
+
 def build_settings(env: Mapping[str, str]) -> dict:
     production = env.get("DJANGO_ENV") == "production" or bool(env.get("K_SERVICE"))
     app_key = env.get("APP_API_KEY", "")
@@ -85,6 +92,8 @@ def build_settings(env: Mapping[str, str]) -> dict:
             "APP_API_KEY": app_key,
             "RATE_LIMIT_HUM_PER_MINUTE": _number(env, "RATE_LIMIT_HUM_PER_MINUTE", 0),
             "RATE_LIMIT_DEFAULT_PER_MINUTE": _number(env, "RATE_LIMIT_DEFAULT_PER_MINUTE", 0),
+            # Any origin, so the website can be tried against a local server.
+            "WEBSITE_ORIGINS": _list(env, "WEBSITE_ORIGINS", ["*"]),
         }
 
     secret = env.get("DJANGO_SECRET_KEY", "")
@@ -118,4 +127,5 @@ def build_settings(env: Mapping[str, str]) -> dict:
         "APP_API_KEY": app_key,
         "RATE_LIMIT_HUM_PER_MINUTE": _number(env, "RATE_LIMIT_HUM_PER_MINUTE", PRODUCTION_RATE_LIMIT_HUM),
         "RATE_LIMIT_DEFAULT_PER_MINUTE": _number(env, "RATE_LIMIT_DEFAULT_PER_MINUTE", PRODUCTION_RATE_LIMIT_DEFAULT),
+        "WEBSITE_ORIGINS": _list(env, "WEBSITE_ORIGINS", PRODUCTION_WEBSITE_ORIGINS),
     }

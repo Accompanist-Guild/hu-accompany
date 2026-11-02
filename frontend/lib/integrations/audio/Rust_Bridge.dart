@@ -23,9 +23,12 @@ import 'package:hu_accomponist/src/rust/frb_generated.dart';
 /// plugin (cargokit) compiles `native_ffi` during the Xcode build and links it
 /// into the app, so there is no prebuilt file to commit.
 ///
-/// Other platforms keep the generated default, which looks for a dynamic
-/// library that those builds don't have, so initialization is expected to fail
-/// there and anything Rust-backed is unavailable.
+/// Windows keeps the generated default, which opens `native_ffi.dll`: cargokit
+/// builds it during `flutter build windows` and puts it beside the app.
+///
+/// Other platforms keep the generated default too, but those builds don't have
+/// the library, so initialization is expected to fail there and anything
+/// Rust-backed is unavailable.
 abstract final class RustBridge {
   static bool _initialized = false;
   static bool _available = false;

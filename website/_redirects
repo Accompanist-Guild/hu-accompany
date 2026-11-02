@@ -1,0 +1,5 @@
+# Cloudflare redirects (https://developers.cloudflare.com/workers/static-assets/redirects/).
+# The download buttons use these addresses, so visitors see accompanist.app, never GitHub. Each one hands out the
+# newest release's file: the release workflow (.github/workflows/release.yml) always names them the same.
+/download/mac      https://github.com/Accompanist-Guild/hu-accompany/releases/latest/download/Accompanist-macos.dmg          302
+/download/windows  https://github.com/Accompanist-Guild/hu-accompany/releases/latest/download/Accompanist-windows-setup.exe  302
