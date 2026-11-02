@@ -11,8 +11,10 @@ on:
 permissions:
   contents: read
 
+# One run per branch, a newer push replacing an older one. Keyed by the calling workflow too (github.workflow is the
+# caller's name when Release calls this), so a release's checks never queue behind, or cancel, a push's CI.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

@@ -135,7 +135,19 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
+      # backend/storage has score files whose paths pass Windows' 260-character limit, which fails the checkout.
+      # The app needs none of backend/, so only what the build uses is fetched; long paths are allowed as well, for
+      # anything under frontend/ that grows long later.
+      - name: Allow long file paths
+        run: git config --global core.longpaths true
+
       - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            frontend
+            native_ffi
+            scripts
+            .github
 
       - uses: subosito/flutter-action@v2
         with:
