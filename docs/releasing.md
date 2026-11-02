@@ -39,7 +39,7 @@ Rules for the version number:
 - `v1.2.3-beta.1` is published as a **pre-release**: it is on the releases page for testers, but the website and the apps' update check ignore it.
 - A broken release is fixed by releasing a higher version. Re-running a tag's workflow replaces its files, but people who already downloaded it keep what they have.
 
-If the change also touched the server (`backend/`), deploy it first, so the new apps never meet an old server: `STAGES=deploy backend/deploy/setup.sh`. If it touched the website (`website/`), deploy that with `website/deploy.sh`.
+If the change also touched the server (`backend/`), deploy it first, so the new apps never meet an old server: `backend/deploy/update.sh` (new code only; the server's settings stay as they are). If it touched the website (`website/`), deploy that with `website/deploy.sh`.
 
 ## What the workflow does (`.github/workflows/release.yml`)
 
