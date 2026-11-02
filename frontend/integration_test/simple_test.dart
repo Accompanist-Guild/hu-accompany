@@ -1,14 +1,17 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hu_accomponist/integrations/audio/Rust_Bridge.dart';
 import 'package:hu_accomponist/main.dart';
-import 'package:hu_accomponist/src/rust/frb_generated.dart';
 import 'package:integration_test/integration_test.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
-  setUpAll(() async => await RustLib.init());
+  // Same loader as main(): on iOS/macOS the Rust code is linked statically,
+  // so the generated default (dlopen of native_ffi.framework) can't find it.
+  setUpAll(() async => await RustBridge.ensureInitialized());
 
   testWidgets('App boots with RustLib initialized', (WidgetTester tester) async {
-    // Smoke test only: confirms RustLib.init() doesn't throw and the app's
+    expect(RustBridge.isAvailable, isTrue);
+    // Smoke test only: confirms the Rust bridge comes up and the app's
     // widget tree builds cleanly end to end (Vinyl_Loading_Screen ->
     // Record_Navigator_Page). There's no Rust API surface to exercise yet
     // (the old greet() demo fn was removed and nothing has replaced it),
