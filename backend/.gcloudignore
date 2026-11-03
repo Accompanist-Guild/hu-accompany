@@ -3,4 +3,7 @@
 # them all to Google: mxl.tar alone is 2 GB.
 .gcloudignore
 #!include:.dockerignore
+# .dockerignore lists the Dockerfile (Docker reads it anyway, it just stays out of the image), but Cloud Build needs
+# it in the upload to build at all.
+!Dockerfile
 mxl.tar

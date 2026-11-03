@@ -272,3 +272,27 @@ body.demo-playing .zoom { display: none; }
 .file-btn:has(input:disabled) { opacity: .45; }
 .file-btn:has(input:disabled) input { cursor: default; }
 .field[hidden] { display: none; }
+
+/* ── Piece picker: search the app's library ─────────────── */
+.picker { position: relative; display: grid; gap: 4px; flex: 1 1 280px; max-width: 420px; }
+.picker-input {
+  font: 500 15px var(--sans); color: var(--ink); background: var(--paper);
+  border: 1.5px solid var(--ink); border-radius: 2px; padding: 10px 12px; width: 100%;
+}
+.picker-input::placeholder { color: var(--muted); }
+.picker-input:disabled { opacity: .45; }
+.picker-results {
+  position: absolute; z-index: 15; top: 100%; left: 0; right: 0; margin: 4px 0 0; padding: 4px 0;
+  list-style: none; background: var(--paper); border: 1.5px solid var(--ink); border-radius: 2px;
+  max-height: min(360px, 50vh); overflow-y: auto;
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--rule) 55%, transparent);
+}
+.picker-results[hidden] { display: none; }
+.picker-results button {
+  display: grid; gap: 1px; width: 100%; padding: 8px 12px; border: 0; background: none; text-align: left;
+  font: inherit; color: var(--ink); cursor: pointer;
+}
+.picker-results button:hover, .picker-results button:focus-visible { background: var(--ivory); outline: none; }
+.picker-results .pick-title { font: 600 15px/1.3 var(--serif); }
+.picker-results .pick-sub { font-size: 13px; color: var(--muted); }
+.picker-results .pick-none { padding: 8px 12px; font-size: 14px; color: var(--muted); }

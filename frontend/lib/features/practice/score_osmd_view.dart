@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Platform;
+import 'dart:io' show File, Platform;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_windows/webview_windows.dart';
 
 import 'package:hu_accomponist/features/practice/live_judge.dart';
 import 'package:hu_accomponist/features/practice/practice_prefs.dart';
@@ -43,7 +46,8 @@ enum InkMode { off, pen, eraser }
 /// just once WebView's onPageFinished fires, since the OSMD script may
 /// still be executing at that point.
 class ScoreOsmdController {
-  WebViewController? _web;
+  /// Runs a script in the page, whichever web view shows it.
+  Future<void> Function(String js)? _web;
   bool _bridgeReady = false;
   final List<String> _pendingCalls = [];
 
@@ -75,15 +79,15 @@ class ScoreOsmdController {
 
   /// A freshly attached WebView has not loaded the bridge yet, so calls
   /// queue until its own 'bridgeReady' arrives.
-  void attach(WebViewController controller) {
-    _web = controller;
+  void attach(Future<void> Function(String js) runJavaScript) {
+    _web = runJavaScript;
     _bridgeReady = false;
   }
 
   void onBridgeReady() {
     _bridgeReady = true;
     for (final call in _pendingCalls) {
-      _web?.runJavaScript(call);
+      _web?.call(call);
     }
     _pendingCalls.clear();
   }
@@ -97,7 +101,7 @@ class ScoreOsmdController {
 
   void _call(String js) {
     if (_bridgeReady && _web != null) {
-      _web!.runJavaScript(js);
+      _web!(js);
     } else {
       _pendingCalls.add(js);
     }
@@ -216,6 +220,9 @@ class ScoreOsmdController {
 /// Renders MusicXML with OpenSheetMusicDisplay inside a WebView. OSMD owns
 /// its own layout and scrolling, so this is one continuous view rather than
 /// discrete pages. OSMD is bundled under assets/osmd/, so it works offline.
+///
+/// webview_flutter has no Windows version, so there the page runs in
+/// Microsoft's WebView2 (webview_windows) instead, with the same bridge.
 class ScoreOsmdView extends StatefulWidget {
   final String musicXml;
   final ScoreOsmdController controller;
@@ -231,22 +238,83 @@ class ScoreOsmdView extends StatefulWidget {
 }
 
 class _ScoreOsmdViewState extends State<ScoreOsmdView> {
-  late final WebViewController _web;
+  WebViewController? _web;
+  WebviewController? _windowsWeb;
+  StreamSubscription<dynamic>? _windowsMessages;
   bool _loading = true;
   String? _error;
+
+  /// Where WebView2 serves the app's assets/osmd folder from (see
+  /// [_startWindowsWebView]). Made up, and never looked up on the network.
+  static const String _windowsHost = 'score.accompanist.invalid';
 
   @override
   void initState() {
     super.initState();
-    widget.controller.attach(_buildWebViewController());
+    if (Platform.isWindows) {
+      final web = _windowsWeb = WebviewController();
+      widget.controller.attach(web.executeScript);
+      _startWindowsWebView(web);
+    } else {
+      widget.controller.attach(_buildWebViewController().runJavaScript);
+    }
+  }
+
+  @override
+  void dispose() {
+    _windowsMessages?.cancel();
+    _windowsWeb?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _run(String js) =>
+      widget.controller._web?.call(js) ?? Future.value();
+
+  Future<void> _startWindowsWebView(WebviewController web) async {
+    try {
+      await web.initialize();
+      // The page posts every message to window.FlutterBridge, which
+      // webview_flutter provides elsewhere; here it is WebView2's channel.
+      await web.addScriptToExecuteOnDocumentCreated(
+        'window.FlutterBridge = { postMessage: function (m) { window.chrome.webview.postMessage(m); } };',
+      );
+      _windowsMessages = web.webMessage.listen(
+        (message) => _onPageMessage(message as String),
+      );
+      // Flutter's assets are plain files beside the app on Windows.
+      final assets = [
+        File(Platform.resolvedExecutable).parent.path,
+        'data',
+        'flutter_assets',
+        'assets',
+        'osmd',
+      ].join(r'\');
+      await web.addVirtualHostNameMapping(
+        _windowsHost,
+        assets,
+        WebviewHostResourceAccessKind.allow,
+      );
+      await web.loadUrl('https://$_windowsHost/osmd_viewer.html');
+    } on PlatformException catch (e) {
+      // No WebView2 runtime: Windows 11 has it, Windows 10 gets it with Edge.
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error =
+              'Scores need Microsoft Edge WebView2, which this computer '
+              'does not have (${e.message}). Install it from Microsoft and '
+              'open Accompanist again.';
+        });
+      }
+    }
   }
 
   WebViewController _buildWebViewController() {
-    _web = WebViewController();
+    final web = _web = WebViewController();
     // macOS web views can't be made transparent: the call throws, and the
     // page would never load. The page paints its own paper there.
-    if (!Platform.isMacOS) _web.setBackgroundColor(const Color(0x00000000));
-    _web
+    if (!Platform.isMacOS) web.setBackgroundColor(const Color(0x00000000));
+    web
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..addJavaScriptChannel(
         'FlutterBridge',
@@ -272,7 +340,7 @@ class _ScoreOsmdViewState extends State<ScoreOsmdView> {
       // Case-sensitive on iOS. The page loads opensheetmusicdisplay.min.js
       // from the same asset folder.
       ..loadFlutterAsset('assets/osmd/osmd_viewer.html');
-    return _web;
+    return web;
   }
 
   @override
@@ -289,18 +357,19 @@ class _ScoreOsmdViewState extends State<ScoreOsmdView> {
     }
   }
 
-  void _onBridgeMessage(JavaScriptMessage message) {
-    final data = jsonDecode(message.message) as Map<String, dynamic>;
+  void _onBridgeMessage(JavaScriptMessage message) =>
+      _onPageMessage(message.message);
+
+  void _onPageMessage(String message) {
+    final data = jsonDecode(message) as Map<String, dynamic>;
     switch (data['type']) {
       case 'bridgeReady':
         // window.OSMDBridge now exists — safe to flush queued calls and
         // kick off the very first loadScore.
-        if (Platform.isMacOS) {
-          // Not transparent there (see above): white would show around the
-          // music, so it gets the card's paper instead.
-          _web.runJavaScript(
-            "document.documentElement.style.background = '#FFFCF4';",
-          );
+        if (Platform.isMacOS || Platform.isWindows) {
+          // Not transparent there (see above; WebView2 is left opaque too):
+          // white would show around the music, so it gets the card's paper.
+          _run("document.documentElement.style.background = '#FFFCF4';");
         }
         widget.controller.onBridgeReady();
         widget.controller.loadScore(widget.musicXml);
@@ -358,7 +427,14 @@ class _ScoreOsmdViewState extends State<ScoreOsmdView> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        WebViewWidget(controller: _web),
+        if (_windowsWeb case final web?)
+          ValueListenableBuilder<WebviewValue>(
+            valueListenable: web,
+            builder: (context, value, _) =>
+                value.isInitialized ? Webview(web) : const SizedBox.expand(),
+          )
+        else
+          WebViewWidget(controller: _web!),
         if (_loading)
           const Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
         if (_error != null)

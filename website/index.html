@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Accompanist</title>
-  <meta name="description" content="Play your instrument and Accompanist marks every note on the sheet music as you go. Try it once in your browser with Für Elise.">
+  <meta name="description" content="Play your instrument and Accompanist marks every note on the sheet music as you go. Try it once in your browser with any piece in the library.">
   <meta name="theme-color" content="#F5EFE2">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -31,8 +31,8 @@
           green when it’s right, a pencilled word when it isn’t. It follows your tempo, so you never
           have to keep up with a metronome.</p>
         <div class="hero-actions">
-          <a class="btn btn-ink" href="#demo">Try Für Elise, free</a>
-          <a class="btn btn-line" href="#download">Download for Mac</a>
+          <a class="btn btn-ink" href="#demo">Try it free in your browser</a>
+          <a class="btn btn-line" href="#download">Download for Mac or Windows</a>
         </div>
       </div>
       <figure class="hero-sheet" aria-label="A bar of music marked by Accompanist: right notes filled green, a late note labelled late">
@@ -73,12 +73,19 @@
     <section id="demo" class="demo">
       <div class="section-head">
         <h2>Try it once.</h2>
-        <p>Für Elise, or a score of your own, with the same listening engine as the app. Play it on
-          a piano or keyboard near your computer, out loud. Nothing you play, and no file you open,
-          leaves your browser.</p>
+        <p>Any piece from the library, or a score of your own, with the same listening engine as the
+          app. Play it on a piano or keyboard near your computer, out loud. Nothing you play, and no
+          file you open, leaves your browser.</p>
       </div>
 
       <div class="demo-controls">
+        <div class="picker">
+          <label class="field" for="demo-search"><span>Piece</span></label>
+          <input id="demo-search" class="picker-input" type="search" autocomplete="off" spellcheck="false"
+            placeholder="Für Elise · search Bach, Chopin, nocturne…" aria-controls="demo-results"
+            aria-describedby="demo-status">
+          <ul id="demo-results" class="picker-results" hidden></ul>
+        </div>
         <label class="field">
           <span>Hands</span>
           <select id="demo-hands">
@@ -101,7 +108,7 @@
       </div>
 
       <div class="score-card" id="score-card">
-        <iframe id="score-frame" src="viewer/index.html" title="Für Elise sheet music"></iframe>
+        <iframe id="score-frame" src="viewer/index.html" title="Sheet music"></iframe>
         <div id="countin" class="countin" aria-live="assertive"></div>
         <div id="tap-hint" class="tap-hint">Click to pause · double-click to finish</div>
         <div class="pause-bar">
@@ -154,15 +161,16 @@
         <p>The whole library, and every run marked note by note.</p>
       </div>
       <div class="platforms">
-        <a class="platform ready" href="https://github.com/RamusHu0410/hu-accompany/releases/latest">
+        <a class="platform ready" href="/download/mac" download>
           <span class="platform-name">macOS</span>
           <span class="platform-note">macOS 12 or later · Apple silicon and Intel</span>
           <span class="platform-go">Download .dmg →</span>
         </a>
-        <div class="platform">
+        <a class="platform ready" href="/download/windows" download>
           <span class="platform-name">Windows</span>
-          <span class="platform-note">Coming next</span>
-        </div>
+          <span class="platform-note">Windows 10 or 11 · 64-bit</span>
+          <span class="platform-go">Download installer →</span>
+        </a>
         <div class="platform">
           <span class="platform-name">iPhone &amp; iPad</span>
           <span class="platform-note">On the App Store soon</span>
@@ -172,8 +180,10 @@
           <span class="platform-note">Coming later</span>
         </div>
       </div>
-      <p class="fine">The Mac app isn’t signed by Apple yet. The first time you open it, macOS stops it:
-        open <b>System Settings → Privacy &amp; Security</b>, scroll to Accompanist and click <b>Open Anyway</b>.</p>
+      <p class="fine">The apps aren’t signed yet, so the first time, your computer asks whether to trust them.
+        On a Mac, open <b>System Settings → Privacy &amp; Security</b>, scroll to Accompanist and click <b>Open Anyway</b>.
+        On Windows, click <b>More info</b>, then <b>Run anyway</b>. Once installed, Accompanist tells you when a new
+        version is out.</p>
     </section>
   </main>
 

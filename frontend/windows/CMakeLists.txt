@@ -4,7 +4,7 @@ project(hu_accomponist LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
-set(BINARY_NAME "hu_accomponist")
+set(BINARY_NAME "Accompanist")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
@@ -31,6 +31,10 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 
 # Use Unicode for all projects.
 add_definitions(-DUNICODE -D_UNICODE)
+# webview_windows (the score view) still compiles with /await, whose headers Visual Studio 2026 refuses unless this
+# is defined. Set here, before the plugins are added below, so their builds see it too. Microsoft says /await will
+# be removed outright later; if a build fails on it again, the score view needs another Windows web view.
+add_definitions(-D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
 
 # Compilation settings that should be applied to most targets.
 #

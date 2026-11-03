@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:hu_accomponist/features/practice/Draggable_Recorder_Button.dart';
 import 'package:hu_accomponist/features/practice/Drawing_Overlay.dart';
 import 'package:hu_accomponist/integrations/scores/score_ink_store.dart';
@@ -11,6 +12,7 @@ import 'package:hu_accomponist/features/home/Vinyl_Loading_Screen.dart';
 import 'package:hu_accomponist/features/auth/auth_gate.dart';
 import 'package:hu_accomponist/features/onboarding/onboarding_store.dart';
 import 'package:hu_accomponist/features/shell/shell_controller.dart';
+import 'package:hu_accomponist/features/updates/update_banner.dart';
 import 'package:hu_accomponist/integrations/auth/auth_controller.dart';
 import 'package:hu_accomponist/integrations/auth/auth_repository.dart';
 import 'package:hu_accomponist/integrations/auth/session_store.dart';
@@ -58,6 +60,10 @@ Future<void> main() async {
   // Loading strategy differs per platform (static on iOS, dynamic
   // elsewhere), and failure must never block the UI — see Rust_Bridge.dart.
   await RustBridge.ensureInitialized();
+  // just_audio has no player of its own on Windows; this gives it one
+  // (libmpv, bundled by media_kit_libs_windows_audio). Elsewhere it changes
+  // nothing.
+  JustAudioMediaKit.ensureInitialized(linux: false, windows: true);
 
   runApp(const HuAccumponistApp());
 }
@@ -133,8 +139,10 @@ class _HuAccumponistAppState extends State<HuAccumponistApp> {
       ),
       // Above the Navigator, so a page pushed over the shell (the shelf
       // opened from the library, say) can still send the person to Practice.
-      builder: (context, child) =>
-          ShellScope(controller: _shell, child: child!),
+      // The update notice sits over everything, the splash included.
+      builder: (context, child) => UpdateBanner(
+        child: ShellScope(controller: _shell, child: child!),
+      ),
       // App opens onto the vinyl spin-up splash, then the auth gate: the
       // login page when nobody is signed in, otherwise the app itself, on
       // Practice, with the disk bar along the bottom (see AppShell).

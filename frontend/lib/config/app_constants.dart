@@ -54,6 +54,13 @@ abstract final class AppConstants {
         : '$serverUrl/terms',
   );
 
+  /// Where the app asks whether a newer version is out: GitHub's "latest
+  /// release" for the repository. Only the release workflow sets it (see
+  /// .github/workflows/release.yml), for the downloadable Mac and Windows
+  /// apps; empty, the app never checks, which is right for a development build
+  /// and required for the App Store, where Apple delivers updates.
+  static const String updateFeed = String.fromEnvironment('UPDATE_FEED');
+
   /// Support and feedback, and where data requests (export, deletion
   /// questions) are sent.
   static const String supportEmail = String.fromEnvironment(

@@ -21,8 +21,11 @@ dev_dependencies:
 
 flutter:
   plugin:
-    # macOS only. iOS links the engine itself, from the prebuilt libnative_ffi*.a files in frontend/ios (see
-    # build_rs.sh); listing iOS here as well would link a second copy and fail with duplicate symbols.
+    # macOS and Windows: the engine is compiled during the app build (cargokit) and shipped beside the app. Not iOS:
+    # it links the engine itself, from the prebuilt libnative_ffi*.a files in frontend/ios (see build_rs.sh), and
+    # listing iOS here as well would link a second copy and fail with duplicate symbols.
     platforms:
       macos:
+        ffiPlugin: true
+      windows:
         ffiPlugin: true

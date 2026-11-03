@@ -20,6 +20,8 @@ SECURE_PROXY_SSL_HEADER = _config["SECURE_PROXY_SSL_HEADER"]
 APP_API_KEY = _config["APP_API_KEY"]
 RATE_LIMIT_HUM_PER_MINUTE = _config["RATE_LIMIT_HUM_PER_MINUTE"]
 RATE_LIMIT_DEFAULT_PER_MINUTE = _config["RATE_LIMIT_DEFAULT_PER_MINUTE"]
+# Origins whose pages may read the public score routes from a browser (server/middleware.py).
+WEBSITE_ORIGINS = _config["WEBSITE_ORIGINS"]
 # Shown on the public /privacy, /terms and /support pages (server/legal.py).
 LEGAL_PUBLISHER = _config["LEGAL_PUBLISHER"]
 SUPPORT_EMAIL = _config["SUPPORT_EMAIL"]
@@ -50,9 +52,10 @@ HUM_DATA_DIR = Path(os.environ.get("HUM_DATA_DIR", BASE_DIR / "hum_data"))
 # Empty means local disk only. See scores/views.py.
 MUSICXML_BASE_URL = os.environ.get("MUSICXML_BASE_URL", "")
 
-# Order matters (server/middleware.py): health check, rate limit, app key, then Django.
+# Order matters (server/middleware.py): health check, website header, rate limit, app key, then Django.
 MIDDLEWARE = [
     "server.middleware.HealthCheckMiddleware",
+    "server.middleware.WebsiteCorsMiddleware",
     "server.middleware.RateLimitMiddleware",
     "server.middleware.AppKeyMiddleware",
     "django.middleware.common.CommonMiddleware",

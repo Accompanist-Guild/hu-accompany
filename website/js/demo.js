@@ -4,8 +4,12 @@
 import { LiveJudge, isMistake, layout, pieceData, timeName } from './judge.js';
 
 const SCORE_URL = 'scores/fur-elise.musicxml';
-/** The piece being played: Für Elise, or a score the visitor opened. */
+/** The piece being played: Für Elise, one picked from the library, or a score the visitor opened. */
 let title = 'Für Elise';
+/** The app's server, which has the library. Only a page served from this computer may point elsewhere (?api=). */
+const API = (['localhost', '127.0.0.1'].includes(location.hostname) && new URLSearchParams(location.search).get('api'))
+  || 'https://hu-accompany-u4wd4ohuga-uc.a.run.app';
+const SEARCH_LIMIT = 15;
 /** Largest score file accepted (a long piano piece in MusicXML is about 1-2 MB). */
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const USED_KEY = 'accompanist.demo.used';
@@ -17,6 +21,8 @@ const startButton = $('demo-start');
 const status = $('demo-status');
 const handsSelect = $('demo-hands');
 const fileInput = $('demo-file');
+const searchInput = $('demo-search');
+const results = $('demo-results');
 
 // ── The score page ─────────────────────────────────────────────────────────
 let bridge = null;          // the page's OSMDBridge, once it says it is ready
@@ -107,6 +113,97 @@ function ready() {
   worker.postMessage({ type: 'warm' });
 }
 
+/** Shows a new score in place of the current one; ready() runs once its notes have been read. */
+function open(name, content) {
+  title = name;
+  state = 'loading';
+  timeline = null;
+  startButton.disabled = true;
+  frame.title = `${title} sheet music`;
+  say(`Opening ${title}…`);
+  call((b) => { b.resetLive(); b.loadScore(content); });
+}
+
+// ── A piece from the library ───────────────────────────────────────────────
+// The server's public score routes: the same search and files the app uses.
+let searchTimer = null, searching = null;
+
+async function fromServer(path, signal) {
+  const response = await fetch(API + path, { signal });
+  if (response.ok) return response;
+  let message = `the server answered ${response.status}`;
+  try { message = (await response.json()).error || message; } catch { /* not JSON */ }
+  throw new Error(message);
+}
+
+function showResults(items) {
+  results.replaceChildren(...items);
+  results.hidden = !items.length;
+}
+
+function resultRow(score) {
+  const li = el('li');
+  const button = el('button');
+  button.type = 'button';
+  const sub = [score.composer, score.measure_count && `${score.measure_count} bars`].filter(Boolean).join(' · ');
+  button.append(el('span', 'pick-title', score.title), el('span', 'pick-sub', sub));
+  button.addEventListener('click', () => pick(score));
+  li.append(button);
+  return li;
+}
+
+async function search(query) {
+  searching?.abort();
+  searching = new AbortController();
+  try {
+    const response = await fromServer(`/api/scores/search?q=${encodeURIComponent(query)}&limit=${SEARCH_LIMIT}`, searching.signal);
+    const found = (await response.json()).results || [];
+    if (searchInput.value.trim() !== query) return;
+    showResults(found.length ? found.map(resultRow) : [el('li', 'pick-none', `Nothing in the library matches “${query}”.`)]);
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    showResults([el('li', 'pick-none', 'Could not search the library: ' + err.message)]);
+  }
+}
+
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  const query = searchInput.value.trim();
+  if (query.length < 2) { searching?.abort(); return showResults([]); }
+  searchTimer = setTimeout(() => search(query), 250);
+});
+searchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') showResults([]);
+  if (e.key === 'ArrowDown' && !results.hidden) { e.preventDefault(); results.querySelector('button')?.focus(); }
+});
+results.addEventListener('keydown', (e) => {
+  const buttons = [...results.querySelectorAll('button')];
+  const at = buttons.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown') { e.preventDefault(); buttons[Math.min(at + 1, buttons.length - 1)]?.focus(); }
+  if (e.key === 'ArrowUp') { e.preventDefault(); (at > 0 ? buttons[at - 1] : searchInput).focus(); }
+  if (e.key === 'Escape') { showResults([]); searchInput.focus(); }
+});
+document.addEventListener('click', (e) => { if (!e.target.closest('.picker')) showResults([]); });
+
+async function pick(score) {
+  showResults([]);
+  searchInput.value = score.title;
+  if (state !== 'idle' || used()) return;
+  // The current score stays playable until the new one has arrived.
+  state = 'loading';
+  startButton.disabled = true;
+  say(`Fetching ${score.title}…`);
+  let xml;
+  try {
+    xml = await (await fromServer(`/api/scores/${score.id}/musicxml`)).text();
+  } catch (err) {
+    state = 'idle';
+    startButton.disabled = !timeline;
+    return say(`Could not fetch ${score.title}: ${err.message}`);
+  }
+  open(score.title, xml);
+}
+
 // ── The visitor's own score ────────────────────────────────────────────────
 // Read here, in the browser: the file is never sent anywhere.
 fileInput.addEventListener('change', async () => {
@@ -127,12 +224,8 @@ fileInput.addEventListener('change', async () => {
       return say('That isn’t a MusicXML file. Export one from MuseScore, Finale, Sibelius or Dorico (.musicxml or .mxl).');
     }
   }
-  title = file.name.replace(/\.(musicxml|xml|mxl)$/i, '') || 'Your score';
-  state = 'loading';
-  timeline = null;
-  startButton.disabled = true;
-  say(`Opening ${title}…`);
-  call((b) => { b.resetLive(); b.loadScore(content); });
+  searchInput.value = '';
+  open(file.name.replace(/\.(musicxml|xml|mxl)$/i, '') || 'Your score', content);
 });
 
 function showUsed() {
@@ -175,6 +268,7 @@ startButton.addEventListener('click', async () => {
   call((b) => b.resetLive());
   handsSelect.disabled = true;
   fileInput.disabled = true;
+  searchInput.disabled = true;
   await listenFrom(null);
 });
 

@@ -11,14 +11,18 @@ on:
 permissions:
   contents: read
 
+# One run per branch, a newer push replacing an older one. Keyed by the calling workflow too (github.workflow is the
+# caller's name when Release calls this), so a release's checks never queue behind, or cancel, a push's CI.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   flutter:
-    # macOS because that is where these tests have been run and where the app ships.
-    runs-on: macos-latest
+    # Linux: analyze and the tests need no Mac (nothing in them is platform-specific), and GitHub's Mac machines are
+    # often all busy, which twice left CI unrun for 15 minutes and then failed it. The release workflow still builds
+    # each app on its own platform.
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
       run:
