@@ -6,7 +6,8 @@ import 'package:hu_accomponist/shared/theme/Design_Tokens.dart';
 import 'package:hu_accomponist/features/search/Library_Browse.dart';
 import 'package:hu_accomponist/shared/ui/Press_Scale.dart';
 import 'package:hu_accomponist/features/quiz/Quiz_Chrome.dart';
-import 'package:hu_accomponist/features/quiz/Quiz_Question_Card.dart' show quizCorrect, quizWrong;
+import 'package:hu_accomponist/features/quiz/Quiz_Question_Card.dart'
+    show quizCorrect, quizWrong;
 
 /// Score summary plus a review of everything that was missed.
 ///

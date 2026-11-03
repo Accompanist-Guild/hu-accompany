@@ -131,7 +131,9 @@ class PhraseUploadService {
       );
       return report;
     } catch (error) {
-      debugPrint('[Diagnostics] phrase $phraseNumber: could not parse response — $error');
+      debugPrint(
+        '[Diagnostics] phrase $phraseNumber: could not parse response — $error',
+      );
       return null;
     }
   }

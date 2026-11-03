@@ -33,29 +33,78 @@ void main() {
   });
 
   test('says nothing is used for tracking', () {
-    expect(manifest, matches(RegExp(r'<key>NSPrivacyTracking</key>\s*<false/>')));
-    expect(manifest, isNot(matches(RegExp(r'NSPrivacyCollectedDataTypeTracking</key>\s*<true/>'))));
-    expect(manifest, matches(RegExp(r'<key>NSPrivacyTrackingDomains</key>\s*<array/>')));
+    expect(
+      manifest,
+      matches(RegExp(r'<key>NSPrivacyTracking</key>\s*<false/>')),
+    );
+    expect(
+      manifest,
+      isNot(
+        matches(RegExp(r'NSPrivacyCollectedDataTypeTracking</key>\s*<true/>')),
+      ),
+    );
+    expect(
+      manifest,
+      matches(RegExp(r'<key>NSPrivacyTrackingDomains</key>\s*<array/>')),
+    );
   });
 
   test('every declared type is for App Functionality only', () {
-    final purposes = RegExp(r'NSPrivacyCollectedDataTypePurpose\w+').allMatches(manifest).map((m) => m.group(0)).toSet();
-    expect(purposes, {'NSPrivacyCollectedDataTypePurposes', 'NSPrivacyCollectedDataTypePurposeAppFunctionality'});
+    final purposes = RegExp(
+      r'NSPrivacyCollectedDataTypePurpose\w+',
+    ).allMatches(manifest).map((m) => m.group(0)).toSet();
+    expect(purposes, {
+      'NSPrivacyCollectedDataTypePurposes',
+      'NSPrivacyCollectedDataTypePurposeAppFunctionality',
+    });
   });
 
   test('gives the one required-reason API it uses a reason Apple lists', () {
     expect(manifest, contains('NSPrivacyAccessedAPICategoryFileTimestamp'));
     // C617.1: metadata of files inside the app's own container (the audio engine reads its own files).
-    expect(manifest, matches(RegExp(r'NSPrivacyAccessedAPITypeReasons</key>\s*<array>\s*<string>C617\.1</string>')));
-    for (final other in ['SystemBootTime', 'DiskSpace', 'UserDefaults', 'ActiveKeyboard']) {
-      expect(manifest, isNot(contains('NSPrivacyAccessedAPICategory$other')), reason: other);
+    expect(
+      manifest,
+      matches(
+        RegExp(
+          r'NSPrivacyAccessedAPITypeReasons</key>\s*<array>\s*<string>C617\.1</string>',
+        ),
+      ),
+    );
+    for (final other in [
+      'SystemBootTime',
+      'DiskSpace',
+      'UserDefaults',
+      'ActiveKeyboard',
+    ]) {
+      expect(
+        manifest,
+        isNot(contains('NSPrivacyAccessedAPICategory$other')),
+        reason: other,
+      );
     }
   });
 
   test('is part of the app target, so it is copied into the built app', () {
-    final project = File('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync();
+    final project = File(
+      'ios/Runner.xcodeproj/project.pbxproj',
+    ).readAsStringSync();
     // Once where the build file is defined, once where the Resources phase lists it.
-    expect(project, matches(RegExp(r'PrivacyInfo\.xcprivacy in Resources \*/ = \{isa = PBXBuildFile')));
-    expect(project, matches(RegExp(r'files = \([^)]*PrivacyInfo\.xcprivacy in Resources', dotAll: true)));
+    expect(
+      project,
+      matches(
+        RegExp(
+          r'PrivacyInfo\.xcprivacy in Resources \*/ = \{isa = PBXBuildFile',
+        ),
+      ),
+    );
+    expect(
+      project,
+      matches(
+        RegExp(
+          r'files = \([^)]*PrivacyInfo\.xcprivacy in Resources',
+          dotAll: true,
+        ),
+      ),
+    );
   });
 }

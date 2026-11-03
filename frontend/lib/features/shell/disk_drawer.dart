@@ -122,7 +122,7 @@ class _DiskDrawerState extends State<DiskDrawer>
     const sideMargin = Space.xl;
     // Wider than any disk: labels are centred under their disk in a box of
     // this width, so a long name never pushes off to one side.
-    const itemWidth = 108.0;
+    const itemWidth = 140.0;
     const labelHeight = 24.0;
     final areaHeight = bottom - top;
     // Three rows, each a disk, its label and a gap.
@@ -205,11 +205,16 @@ class _DiskDrawerState extends State<DiskDrawer>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              MiniDisk(
-                size: disk,
-                diskColor: page.diskColor,
-                icon: page.icon,
-                active: active,
+              Tooltip(
+                message: page.caption,
+                triggerMode: TooltipTriggerMode.manual,
+                waitDuration: navTooltipWait,
+                child: MiniDisk(
+                  size: disk,
+                  diskColor: page.diskColor,
+                  icon: page.icon,
+                  active: active,
+                ),
               ),
               const SizedBox(height: Space.xxs),
               Text(

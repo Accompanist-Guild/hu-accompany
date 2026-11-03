@@ -39,13 +39,16 @@ void main() {
       expect(json['duration_ms'], 500);
     });
 
-    test('a note with no timing still gets a volume sent and numbers for the rest', () {
-      final json = PhraseUploadService.userNoteToJson(
-        note(volume: 0.3, start: null, end: null),
-      );
-      expect(json['volume'], closeTo(0.3, 1e-6));
-      expect(json['start_time_ms'], 0);
-    });
+    test(
+      'a note with no timing still gets a volume sent and numbers for the rest',
+      () {
+        final json = PhraseUploadService.userNoteToJson(
+          note(volume: 0.3, start: null, end: null),
+        );
+        expect(json['volume'], closeTo(0.3, 1e-6));
+        expect(json['start_time_ms'], 0);
+      },
+    );
   });
 
   group('notes read back from getUserData()', () {
@@ -69,7 +72,10 @@ void main() {
 
     test('a missing or null volume is null, not zero', () {
       expect(RustSession.notesFromJson(base).volume, isNull);
-      expect(RustSession.notesFromJson({...base, 'volume': null}).volume, isNull);
+      expect(
+        RustSession.notesFromJson({...base, 'volume': null}).volume,
+        isNull,
+      );
     });
   });
 }

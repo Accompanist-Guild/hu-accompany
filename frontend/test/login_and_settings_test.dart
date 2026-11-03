@@ -151,7 +151,7 @@ void main() {
             shell: shell,
             links: links,
             loginRequired: true,
-            pageBuilder: (slot) => Text('page $slot'),
+            pageBuilder: (slot, _) => Text('page $slot'),
           ),
         ),
       );
@@ -192,7 +192,7 @@ void main() {
             auth: auth,
             shell: shell,
             loginRequired: true,
-            pageBuilder: (slot) => Text('page $slot'),
+            pageBuilder: (slot, _) => Text('page $slot'),
           ),
         ),
       );
@@ -218,7 +218,7 @@ void main() {
             shell: shell,
             links: links,
             loginRequired: loginRequired,
-            pageBuilder: (slot) => Text('page $slot'),
+            pageBuilder: (slot, _) => Text('page $slot'),
           ),
         ),
       );
@@ -228,13 +228,16 @@ void main() {
       expect(AppConstants.loginRequired, isTrue);
     });
 
-    testWidgets('shows the app at once, even while the stored session is still being read', (tester) async {
-      await pumpGate(tester, loginRequired: false);
-      await tester.pump();
-      expect(auth.status, AuthStatus.restoring);
-      expect(find.byType(AppShell), findsOneWidget);
-      expect(find.byType(LoginPage), findsNothing);
-    });
+    testWidgets(
+      'shows the app at once, even while the stored session is still being read',
+      (tester) async {
+        await pumpGate(tester, loginRequired: false);
+        await tester.pump();
+        expect(auth.status, AuthStatus.restoring);
+        expect(find.byType(AppShell), findsOneWidget);
+        expect(find.byType(LoginPage), findsNothing);
+      },
+    );
 
     testWidgets('shows the app when nobody is signed in', (tester) async {
       await auth.restore();
@@ -245,7 +248,9 @@ void main() {
       expect(find.byType(LoginPage), findsNothing);
     });
 
-    testWidgets('uses the build setting when no value is passed', (tester) async {
+    testWidgets('uses the build setting when no value is passed', (
+      tester,
+    ) async {
       await auth.restore();
       await pumpGate(tester); // AppConstants.loginRequired is true
       await tester.pumpAndSettle();
@@ -285,7 +290,8 @@ void main() {
             auth: auth,
             links: links,
             loginRequired: loginRequired,
-            talkMode: true, // off in a default build; talk_mode_flag_test.dart covers that
+            talkMode:
+                true, // off in a default build; talk_mode_flag_test.dart covers that
             sharer: sharer,
             consent: talk,
             loadVersion: () async => const AppVersion('1.2.3', '45'),
@@ -296,9 +302,16 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('with login off, hides the account rows and keeps the rest', (tester) async {
+    testWidgets('with login off, hides the account rows and keeps the rest', (
+      tester,
+    ) async {
       await pumpSettings(tester, loginRequired: false);
-      for (final gone in ['Export my data', 'Delete account', 'Log out', 'Your account']) {
+      for (final gone in [
+        'Export my data',
+        'Delete account',
+        'Log out',
+        'Your account',
+      ]) {
         expect(find.text(gone), findsNothing, reason: gone);
       }
       // Apple needs withdrawing the AI permission to stay reachable, and the legal pages too.
@@ -308,9 +321,16 @@ void main() {
       expect(find.text('Contact support or send feedback'), findsOneWidget);
     });
 
-    testWidgets('with login on, the account rows are all there', (tester) async {
+    testWidgets('with login on, the account rows are all there', (
+      tester,
+    ) async {
       await pumpSettings(tester, loginRequired: true);
-      for (final shown in ['Export my data', 'Delete account', 'Log out', 'Your account']) {
+      for (final shown in [
+        'Export my data',
+        'Delete account',
+        'Log out',
+        'Your account',
+      ]) {
         expect(find.text(shown), findsOneWidget, reason: shown);
       }
     });
@@ -433,13 +453,17 @@ void main() {
       expect(destructive.isDestructiveAction, isTrue);
     });
 
-    testWidgets('says whether Talk mode may share with the AI services', (tester) async {
+    testWidgets('says whether Talk mode may share with the AI services', (
+      tester,
+    ) async {
       await pumpSettings(tester, talkAllowed: true);
       expect(find.text('Talk mode and AI services'), findsOneWidget);
       expect(find.textContaining('Allowed'), findsOneWidget);
     });
 
-    testWidgets('stopping the sharing asks first, then withdraws it', (tester) async {
+    testWidgets('stopping the sharing asks first, then withdraws it', (
+      tester,
+    ) async {
       await pumpSettings(tester, talkAllowed: true);
       await tester.tap(find.text('Talk mode and AI services'));
       await tester.pumpAndSettle();
@@ -455,14 +479,20 @@ void main() {
       expect(find.textContaining('Not allowed'), findsOneWidget);
     });
 
-    testWidgets('when it is off, tapping explains they will be asked next time', (tester) async {
-      await pumpSettings(tester);
-      expect(find.textContaining('Not allowed'), findsOneWidget);
-      await tester.tap(find.text('Talk mode and AI services'));
-      await tester.pumpAndSettle();
-      expect(find.textContaining('asked the next time you use Talk mode'), findsOneWidget);
-      expect(talk.granted, isFalse);
-    });
+    testWidgets(
+      'when it is off, tapping explains they will be asked next time',
+      (tester) async {
+        await pumpSettings(tester);
+        expect(find.textContaining('Not allowed'), findsOneWidget);
+        await tester.tap(find.text('Talk mode and AI services'));
+        await tester.pumpAndSettle();
+        expect(
+          find.textContaining('asked the next time you use Talk mode'),
+          findsOneWidget,
+        );
+        expect(talk.granted, isFalse);
+      },
+    );
 
     testWidgets('exports the data through the share sheet', (tester) async {
       await pumpSettings(tester);

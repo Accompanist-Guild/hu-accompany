@@ -71,7 +71,9 @@ class ScoreRepository {
     }
     final uri = Uri.parse('$baseUrl$path').replace(queryParameters: query);
     try {
-      return await http.get(uri, headers: ServerAuth.headers()).timeout(_timeout);
+      return await http
+          .get(uri, headers: ServerAuth.headers())
+          .timeout(_timeout);
     } on Exception {
       return null;
     }

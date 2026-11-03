@@ -43,11 +43,7 @@ class _SkeletonRow extends StatelessWidget {
       ),
       child: const Row(
         children: [
-          SkeletonBox(
-            width: 36,
-            height: 36,
-            borderRadius: Radii.pillRadius,
-          ),
+          SkeletonBox(width: 36, height: 36, borderRadius: Radii.pillRadius),
           SizedBox(width: Space.md),
           Expanded(
             child: Column(
@@ -59,10 +55,7 @@ class _SkeletonRow extends StatelessWidget {
                 FractionallySizedBox(
                   alignment: Alignment.centerLeft,
                   widthFactor: 0.45,
-                  child: SkeletonBox(
-                    height: 9,
-                    borderRadius: Radii.pillRadius,
-                  ),
+                  child: SkeletonBox(height: 9, borderRadius: Radii.pillRadius),
                 ),
               ],
             ),

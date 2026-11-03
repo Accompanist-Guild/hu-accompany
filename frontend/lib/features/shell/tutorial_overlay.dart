@@ -6,44 +6,36 @@ import 'package:hu_accomponist/shared/theme/Color_Theme.dart';
 import 'package:hu_accomponist/shared/theme/Design_Tokens.dart';
 
 /// The steps of the first-run tour, in order. The shell moves between them:
-/// the two gesture steps advance when the person actually does the gesture.
+/// the hold step advances when the person actually does the gesture.
 abstract final class TutorialStep {
   static const int welcome = 0;
-  static const int swipe = 1;
-  static const int hold = 2;
-  static const int drawer = 3;
-  static const int tour = 4;
-  static const int count = 5;
+  static const int hold = 1;
+  static const int drawer = 2;
+  static const int tour = 3;
+  static const int count = 4;
 }
 
 /// A dimmed layer over the whole app with a card explaining the current
-/// step. The gesture steps cut a hole over the disk bar and let touches
-/// through it, so the person tries the gesture on the real disks. The swipe
-/// step shows a finger swiping as an example, and waits for the person to do
-/// it themselves.
+/// step. The hold step cuts a hole over the disk bar and lets touches
+/// through it, so the person tries the gesture on the real disks.
 class TutorialOverlay extends StatefulWidget {
   final int step;
 
   /// Height of the disk bar including the inset below it: the hole.
   final double barHeight;
 
-  /// The person did what this step asked (only the swipe step waits on
-  /// that): the card congratulates them before the shell moves on.
-  final bool succeeded;
-
   /// Moves on without the gesture (the step's own button).
   final VoidCallback onNext;
   final VoidCallback onSkip;
   final VoidCallback onDone;
 
-  /// The disks the tour describes (the Guides disk only for authors).
+  /// The disks the tour describes.
   final List<DiskPage> pages;
 
   const TutorialOverlay({
     super.key,
     required this.step,
     required this.barHeight,
-    this.succeeded = false,
     required this.onNext,
     required this.onSkip,
     required this.onDone,
@@ -61,12 +53,6 @@ class _TutorialOverlayState extends State<TutorialOverlay>
     duration: const Duration(milliseconds: 1100),
   );
 
-  /// Loops the example swipe.
-  late final AnimationController _demo = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 2400),
-  );
-
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -76,28 +62,22 @@ class _TutorialOverlayState extends State<TutorialOverlay>
       _pulse
         ..stop()
         ..value = 0.5;
-      _demo
-        ..stop()
-        ..value = 0.5;
     } else {
       if (!_pulse.isAnimating) _pulse.repeat(reverse: true);
-      if (!_demo.isAnimating) _demo.repeat();
     }
   }
 
   @override
   void dispose() {
     _pulse.dispose();
-    _demo.dispose();
     super.dispose();
   }
 
   bool get _holeOverBar => widget.step != TutorialStep.drawer;
 
-  /// Touches reach the disks through the hole only on the steps that ask
+  /// Touches reach the disks through the hole only on the step that asks
   /// for a gesture. Elsewhere the hole just shows them off.
-  bool get _interactiveHole =>
-      widget.step == TutorialStep.swipe || widget.step == TutorialStep.hold;
+  bool get _interactiveHole => widget.step == TutorialStep.hold;
 
   /// The drawer step has the drawer's own dim, so this layer adds none and
   /// lets touches through to the drawer.
@@ -122,7 +102,7 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                   builder: (context, _) => CustomPaint(
                     painter: _SpotlightPainter(
                       barHeight: _holeOverBar ? widget.barHeight : null,
-                      pulse: widget.succeeded ? 1 : _pulse.value,
+                      pulse: _pulse.value,
                     ),
                   ),
                 ),
@@ -142,18 +122,6 @@ class _TutorialOverlayState extends State<TutorialOverlay>
               ),
             ),
           ],
-          if (widget.step == TutorialStep.swipe && !widget.succeeded)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: AnimatedBuilder(
-                  animation: _demo,
-                  builder: (context, _) => _SwipeDemo(
-                    progress: _demo.value,
-                    barHeight: widget.barHeight,
-                  ),
-                ),
-              ),
-            ),
           SafeArea(
             bottom: false,
             child: Padding(
@@ -186,9 +154,8 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                     ),
                     child: _Card(
                       pages: widget.pages,
-                      key: ValueKey('$step-${widget.succeeded}'),
+                      key: ValueKey(step),
                       step: step,
-                      succeeded: widget.succeeded,
                       onNext: widget.onNext,
                       onSkip: widget.onSkip,
                       onDone: widget.onDone,
@@ -249,7 +216,6 @@ class _SpotlightPainter extends CustomPainter {
 
 class _Card extends StatelessWidget {
   final int step;
-  final bool succeeded;
   final VoidCallback onNext;
   final VoidCallback onSkip;
   final VoidCallback onDone;
@@ -259,7 +225,6 @@ class _Card extends StatelessWidget {
     super.key,
     required this.pages,
     required this.step,
-    required this.succeeded,
     required this.onNext,
     required this.onSkip,
     required this.onDone,
@@ -267,18 +232,15 @@ class _Card extends StatelessWidget {
 
   static const _titles = [
     'Meet your disks',
-    'Swipe to explore your disks',
     'Press and hold for the disk drawer',
     'Tap a disk to jump there',
     'Where things are',
   ];
 
   static const _bodies = [
-    'The three disks at the bottom are your pages: the one with the gold ring '
-        'is where you are now. This quick tour takes under a minute, and you '
-        'can replay it from Settings.',
-    'Slide a finger (or the mouse) left or right along the disks. Give it a '
-        'try: the next one comes to the middle.',
+    'The disks at the bottom are your pages: tap one to go there. The one '
+        'with the gold ring is where you are now. This quick tour takes under '
+        'a minute, and you can replay it from your account: tap your icon at the top of Home.',
     'Keep a finger on the disks for a moment. Every page pops out, and the '
         'rest of the screen fades back.',
     'Pick any page to go straight there, or tap outside the disks to close '
@@ -314,39 +276,17 @@ class _Card extends StatelessWidget {
             ),
           ),
           const SizedBox(height: Space.xs),
-          Row(
-            children: [
-              if (succeeded) ...[
-                // Pops in, so the success is felt as well as read.
-                TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0.3, end: 1),
-                  duration: Motion.slow,
-                  curve: Curves.easeOutBack,
-                  builder: (context, scale, child) =>
-                      Transform.scale(scale: scale, child: child),
-                  child: const Icon(
-                    Icons.check_circle_rounded,
-                    color: PracticePalette.gold,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: Space.xs),
-              ],
-              Expanded(
-                child: Text(
-                  succeeded ? 'Nice swipe!' : _titles[step],
-                  style: const TextStyle(
-                    color: PracticePalette.brown,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
+          Text(
+            _titles[step],
+            style: const TextStyle(
+              color: PracticePalette.brown,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: Space.xs),
           Text(
-            succeeded ? "That's how you browse your pages." : _bodies[step],
+            _bodies[step],
             style: const TextStyle(
               color: PracticePalette.mutedBrown,
               fontSize: 14,
@@ -365,20 +305,18 @@ class _Card extends StatelessWidget {
                 child: const Text('Skip'),
               ),
               const Spacer(),
-              // The swipe step has no way past it but the swipe itself.
-              if (step != TutorialStep.swipe)
-                FilledButton(
-                  onPressed: _last ? onDone : onNext,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: PracticePalette.gold,
-                    foregroundColor: PracticePalette.paper,
-                  ),
-                  child: Text(switch (step) {
-                    TutorialStep.welcome => 'Show me',
-                    TutorialStep.tour => 'Got it',
-                    _ => 'Next',
-                  }),
+              FilledButton(
+                onPressed: _last ? onDone : onNext,
+                style: FilledButton.styleFrom(
+                  backgroundColor: PracticePalette.gold,
+                  foregroundColor: PracticePalette.paper,
                 ),
+                child: Text(switch (step) {
+                  TutorialStep.welcome => 'Show me',
+                  TutorialStep.tour => 'Got it',
+                  _ => 'Next',
+                }),
+              ),
             ],
           ),
         ],
@@ -432,8 +370,9 @@ class _Card extends StatelessWidget {
             ),
           const SizedBox(height: Space.xs),
           const Text(
-            'On Practice: the sliders at the top left open your library and '
-            'exercises, the pencil at the top right marks up the score, and '
+            'Some disks hold more than one page: pick one from the tabs at '
+            'the top. In the Practice Room, on Practice: the sliders at the '
+            'top left open your library and exercises, the pencil at the top right marks up the score, and '
             'the microphone records. Drag it wherever suits.',
             style: TextStyle(
               color: PracticePalette.mutedBrown,
@@ -443,70 +382,6 @@ class _Card extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// An example of the swipe: a finger slides left along the disks, with
-/// chevrons showing the direction, over and over until the person tries it.
-class _SwipeDemo extends StatelessWidget {
-  final double progress;
-  final double barHeight;
-  const _SwipeDemo({required this.progress, required this.barHeight});
-
-  @override
-  Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    // Rests, slides left, fades out, then starts again from the right.
-    final slide = Curves.easeInOut.transform(
-      ((progress - 0.15) / 0.55).clamp(0.0, 1.0),
-    );
-    final opacity = progress < 0.1
-        ? progress / 0.1
-        : progress > 0.75
-        ? (1 - (progress - 0.75) / 0.25).clamp(0.0, 1.0)
-        : 1.0;
-    final x = width * (0.64 - 0.28 * slide);
-
-    return Stack(
-      children: [
-        Positioned(
-          left: x - 22,
-          bottom: barHeight / 2 - 4,
-          child: Opacity(
-            opacity: opacity,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Chevrons trail the finger, brightest nearest it.
-                for (var i = 3; i >= 1; i--)
-                  Icon(
-                    Icons.chevron_left_rounded,
-                    size: 20,
-                    color: PracticePalette.lightGold.withValues(
-                      alpha: 0.9 - 0.25 * i,
-                    ),
-                  ),
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: PracticePalette.paper.withValues(alpha: 0.9),
-                    border: Border.all(color: PracticePalette.gold, width: 2),
-                    boxShadow: Elevations.raised(Colors.black),
-                  ),
-                  child: const Icon(
-                    Icons.touch_app_rounded,
-                    color: PracticePalette.gold,
-                    size: 24,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

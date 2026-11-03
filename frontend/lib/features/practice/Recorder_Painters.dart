@@ -35,7 +35,9 @@ class RecorderPulseHaloPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(RecorderPulseHaloPainter old) =>
-      old.progress != progress || old.color != color || old.strength != strength;
+      old.progress != progress ||
+      old.color != color ||
+      old.strength != strength;
 }
 
 /// Five bars that stay flat-ish as a hint when idle and sway while

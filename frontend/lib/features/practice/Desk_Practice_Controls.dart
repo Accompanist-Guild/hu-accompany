@@ -237,9 +237,7 @@ class EraserToolButton extends StatelessWidget {
             width: 30,
             height: 18,
             decoration: BoxDecoration(
-              color: active
-                  ? const Color(0xFFFF8FA3)
-                  : const Color(0xFFE58B8B),
+              color: active ? const Color(0xFFFF8FA3) : const Color(0xFFE58B8B),
               borderRadius: BorderRadius.circular(4),
               border: Border.all(color: const Color(0xFFB35F5F), width: 1.2),
             ),
@@ -452,9 +450,7 @@ class PaintPalettePanel extends StatelessWidget {
                                 ]
                               : [
                                   BoxShadow(
-                                    color: Colors.black.withValues(
-                                      alpha: 0.3,
-                                    ),
+                                    color: Colors.black.withValues(alpha: 0.3),
                                     blurRadius: 3,
                                     offset: const Offset(0, 1),
                                   ),
@@ -481,10 +477,7 @@ class PaintPalettePanel extends StatelessWidget {
               ),
               Text(
                 penSize.toStringAsFixed(0),
-                style: const TextStyle(
-                  color: Color(0xFFEDE0C8),
-                  fontSize: 12,
-                ),
+                style: const TextStyle(color: Color(0xFFEDE0C8), fontSize: 12),
               ),
             ],
           ),
@@ -631,9 +624,9 @@ class _RulerPainter extends CustomPainter {
         Offset(x, isMajor ? 26 : 20),
         Paint()
           ..strokeWidth = isMajor ? 1.4 : 0.8
-          ..color = const Color(0xFF5A3820).withValues(
-            alpha: isMajor ? 0.8 : 0.5,
-          ),
+          ..color = const Color(
+            0xFF5A3820,
+          ).withValues(alpha: isMajor ? 0.8 : 0.5),
       );
     }
   }

@@ -164,9 +164,7 @@ class PhraseFeedbackItem {
   factory PhraseFeedbackItem.fromJson(Map<String, dynamic> json) =>
       PhraseFeedbackItem(
         bars: json['bars'] as int? ?? 0,
-        box: FeedbackBox.fromJsonNullable(
-          json['box'] as Map<String, dynamic>?,
-        ),
+        box: FeedbackBox.fromJsonNullable(json['box'] as Map<String, dynamic>?),
         category: json['category'] as String? ?? '',
         severity: json['severity'] as String? ?? '',
         confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
@@ -243,7 +241,8 @@ class PhraseReport {
       sessionId: json['session_id'] as String? ?? '',
       storedAt: json['stored_at'] as String? ?? '',
       guidelinesApplied: [
-        for (final g in json['guidelines_applied'] as List<dynamic>? ?? const [])
+        for (final g
+            in json['guidelines_applied'] as List<dynamic>? ?? const [])
           if (g is Map<String, dynamic>) g['title'] as String? ?? '',
       ],
     );
@@ -311,7 +310,8 @@ class SessionSummary {
   factory SessionSummary.fromJson(Map<String, dynamic> json) {
     final phase2 = json['phase2'] as Map<String, dynamic>? ?? const {};
     final main = phase2['Summary'] as Map<String, dynamic>? ?? const {};
-    final guidelines = phase2['Guidelines'] as Map<String, dynamic>? ?? const {};
+    final guidelines =
+        phase2['Guidelines'] as Map<String, dynamic>? ?? const {};
     final era = phase2['Era'] as Map<String, dynamic>? ?? const {};
     return SessionSummary(
       summary: main['summary'] as String? ?? '',
@@ -380,7 +380,9 @@ class SessionSummaryService {
     }
 
     final stopwatch = Stopwatch()..start();
-    debugPrint('[Diagnostics] summary -> POST $baseUrl$_summaryPath (session=$sessionId)');
+    debugPrint(
+      '[Diagnostics] summary -> POST $baseUrl$_summaryPath (session=$sessionId)',
+    );
 
     var response = await _post(baseUrl, sessionId);
 
@@ -396,7 +398,9 @@ class SessionSummaryService {
         );
         return null;
       }
-      debugPrint('[Diagnostics] rediscovered backend at $freshBaseUrl — retrying summary once.');
+      debugPrint(
+        '[Diagnostics] rediscovered backend at $freshBaseUrl — retrying summary once.',
+      );
       response = await _post(freshBaseUrl, sessionId);
     }
 

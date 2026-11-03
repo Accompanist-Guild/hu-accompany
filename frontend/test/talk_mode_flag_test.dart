@@ -56,7 +56,9 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('by default shows the song and its controls but no chat', (tester) async {
+    testWidgets('by default shows the song and its controls but no chat', (
+      tester,
+    ) async {
       await humWith(tester);
 
       expect(find.text('G major  ·  97 bpm  ·  9 notes'), findsOneWidget);
@@ -79,7 +81,10 @@ void main() {
 
     setUp(() {
       SharedPreferences.setMockInitialValues({});
-      auth = AuthController(store: MemorySessionStore(), repository: FakeAuthRepository());
+      auth = AuthController(
+        store: MemorySessionStore(),
+        repository: FakeAuthRepository(),
+      );
     });
 
     tearDown(() => auth.dispose());
@@ -102,7 +107,9 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('by default has no Talk mode row, and keeps the others', (tester) async {
+    testWidgets('by default has no Talk mode row, and keeps the others', (
+      tester,
+    ) async {
       await settingsWith(tester);
 
       expect(find.text('Talk mode and AI services'), findsNothing);

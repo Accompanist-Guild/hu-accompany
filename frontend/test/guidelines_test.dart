@@ -168,7 +168,10 @@ void main() {
       expect(grace.canAuthorGuidelines, isTrue);
       expect(ada.canAuthorGuidelines, isFalse);
       expect(AuthUser.fromJson(grace.toJson()).roles, ['contributor']);
-      expect(diskPages[PageSlot.guides].title, 'Guides');
+      expect(
+        sectionTabs[PageSlot.learning]![LearningTab.guides].title,
+        'Guides',
+      );
     });
 
     test('a parse result fills a rubric, keeping its messages', () {
@@ -310,8 +313,12 @@ void main() {
           home: AppShell(
             auth: auth,
             controller: shell,
-            pageBuilder: (slot) => Scaffold(
-              body: Center(child: Text('page:${diskPages[slot].title}')),
+            pageBuilder: (slot, tab) => Scaffold(
+              body: Center(
+                child: Text(
+                  'page:${(sectionTabs[slot]?[tab] ?? diskPages[slot]).title}',
+                ),
+              ),
             ),
           ),
         ),
@@ -321,28 +328,28 @@ void main() {
 
     bool hasGuidesDisk(WidgetTester tester) => tester
         .widgetList<MiniDisk>(find.byType(MiniDisk))
-        .any((d) => d.icon == guidesDiskPage.icon);
+        .any((d) => d.icon == diskPages[PageSlot.learning].icon);
 
-    testWidgets('is offered to ada, after Settings', (tester) async {
+    testWidgets('is offered to ada, in the Learning Area', (tester) async {
       final shell = ShellController();
       addTearDown(shell.dispose);
       await pumpShell(tester, ada, shell);
-      shell.goTo(PageSlot.settings);
+      shell.goTo(PageSlot.discussion);
       await tester.pumpAndSettle();
       expect(hasGuidesDisk(tester), isTrue);
-      shell.goTo(PageSlot.guides);
+      shell.goTo(PageSlot.learning, tab: LearningTab.guides);
       await tester.pumpAndSettle();
       expect(find.text('page:Guides'), findsOneWidget);
     });
 
-    testWidgets('is offered to grace, after Settings', (tester) async {
+    testWidgets('is offered to grace, in the Learning Area', (tester) async {
       final shell = ShellController();
       addTearDown(shell.dispose);
       await pumpShell(tester, grace, shell);
-      shell.goTo(PageSlot.settings);
+      shell.goTo(PageSlot.discussion);
       await tester.pumpAndSettle();
       expect(hasGuidesDisk(tester), isTrue);
-      shell.goTo(PageSlot.guides);
+      shell.goTo(PageSlot.learning, tab: LearningTab.guides);
       await tester.pumpAndSettle();
       expect(find.text('page:Guides'), findsOneWidget);
     });

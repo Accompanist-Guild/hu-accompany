@@ -67,10 +67,7 @@ class QuizQuestionCard extends StatelessWidget {
             ...question.choices.map(_choice)
           else
             _blank(),
-          if (_reviewing) ...[
-            const SizedBox(height: Space.md),
-            _explanation(),
-          ],
+          if (_reviewing) ...[const SizedBox(height: Space.md), _explanation()],
         ],
       ),
     );

@@ -10,17 +10,29 @@ void main() {
 
   for (final name in ['Release', 'DebugProfile']) {
     test('$name entitlements let the sandboxed app use the microphone', () {
-      final entitlements = File('macos/Runner/$name.entitlements').readAsStringSync();
+      final entitlements = File(
+        'macos/Runner/$name.entitlements',
+      ).readAsStringSync();
       expect(
         entitlements,
-        matches(RegExp(r'<key>com\.apple\.security\.device\.audio-input</key>\s*<true/>')),
+        matches(
+          RegExp(
+            r'<key>com\.apple\.security\.device\.audio-input</key>\s*<true/>',
+          ),
+        ),
       );
     });
   }
 
   test('Info.plist explains why the microphone is used', () {
-    final usage = RegExp(r'<key>NSMicrophoneUsageDescription</key>\s*<string>([^<]+)</string>').firstMatch(infoPlist);
-    expect(usage, isNotNull, reason: 'macOS refuses microphone access without a usage description');
+    final usage = RegExp(
+      r'<key>NSMicrophoneUsageDescription</key>\s*<string>([^<]+)</string>',
+    ).firstMatch(infoPlist);
+    expect(
+      usage,
+      isNotNull,
+      reason: 'macOS refuses microphone access without a usage description',
+    );
     expect(usage!.group(1)!.trim(), isNotEmpty);
   });
 }

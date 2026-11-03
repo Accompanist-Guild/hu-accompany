@@ -416,7 +416,6 @@ class MemorySavedHumStore implements SavedHumStore {
       File('${folder.path}/${song.audioFile}');
 }
 
-
 /// Talk mode permission kept in memory.
 class MemoryTalkConsent implements TalkConsent {
   MemoryTalkConsent({this.granted = false});

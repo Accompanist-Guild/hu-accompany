@@ -18,27 +18,41 @@ void main() {
   group('ServerAuth.headers', () {
     tearDown(() => ServerAuth.useKey(''));
 
-    test('sends nothing extra when there is no key (a local server with none set)', () {
-      ServerAuth.useKey('');
+    test(
+      'sends nothing extra when there is no key (a local server with none set)',
+      () {
+        ServerAuth.useKey('');
 
-      expect(ServerAuth.headers(), isEmpty);
-      expect(ServerAuth.headers({'Content-Type': 'application/json'}), {
-        'Content-Type': 'application/json',
-      });
-    });
+        expect(ServerAuth.headers(), isEmpty);
+        expect(ServerAuth.headers({'Content-Type': 'application/json'}), {
+          'Content-Type': 'application/json',
+        });
+      },
+    );
 
     test('adds the key and keeps the caller\'s own headers', () {
       ServerAuth.useKey('k-123');
       final mine = {'Authorization': 'Bearer t'};
 
-      expect(ServerAuth.headers(mine), {'Authorization': 'Bearer t', 'X-App-Key': 'k-123'});
-      expect(mine, {'Authorization': 'Bearer t'}, reason: 'the caller\'s map must not be changed');
+      expect(ServerAuth.headers(mine), {
+        'Authorization': 'Bearer t',
+        'X-App-Key': 'k-123',
+      });
+      expect(mine, {
+        'Authorization': 'Bearer t',
+      }, reason: 'the caller\'s map must not be changed');
     });
 
     test('a caller cannot replace the key', () {
       ServerAuth.useKey('k-123');
 
-      expect(ServerAuth.headers({'x-app-key': 'other', 'X-App-Key': 'other'})['X-App-Key'], 'k-123');
+      expect(
+        ServerAuth.headers({
+          'x-app-key': 'other',
+          'X-App-Key': 'other',
+        })['X-App-Key'],
+        'k-123',
+      );
     });
   });
 
@@ -53,7 +67,9 @@ void main() {
       server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       server.listen((request) async {
         seen.add(request);
-        keys['${request.method} ${request.uri.path}'] = request.headers.value('X-App-Key');
+        keys['${request.method} ${request.uri.path}'] = request.headers.value(
+          'X-App-Key',
+        );
         await request.drain<void>();
         request.response
           ..statusCode = 200
@@ -79,14 +95,17 @@ void main() {
     }
 
     test('through the shared client', () async {
-      final file = File('${Directory.systemTemp.path}/server_auth_test.wav')..writeAsBytesSync([1, 2, 3]);
+      final file = File('${Directory.systemTemp.path}/server_auth_test.wav')
+        ..writeAsBytesSync([1, 2, 3]);
       addTearDown(file.deleteSync);
       const client = ApiClient();
 
       await run(() => client.getJson('/get'));
       await run(() => client.postJson('/post', {'a': 1}));
       await run(() => client.delete('/delete'));
-      await run(() => client.postFile('/file', field: 'file', filePath: file.path));
+      await run(
+        () => client.postFile('/file', field: 'file', filePath: file.path),
+      );
 
       expect(keys, {
         'GET /get': 'k-123',
@@ -96,23 +115,35 @@ void main() {
       });
     });
 
-    test('through the quiz, score, and feedback calls that make their own requests', () async {
-      await run(() => QuizGenerator.generate('baroque'));
-      await run(() => const ScoreRepository().search('bach'));
-      await run(() => SessionSummaryService.fetchSummary('session-1'));
-      await run(
-        () => PhraseUploadService.sendPhrase(
-          phraseNumber: 1,
-          bpm: 90,
-          timeSignature: '4/4',
-          piece: const PieceInfo(title: 'T', composer: 'C', composedDate: '1722'),
-          expectedNotes: const [],
-          userNotes: const [],
-        ),
-      );
+    test(
+      'through the quiz, score, and feedback calls that make their own requests',
+      () async {
+        await run(() => QuizGenerator.generate('baroque'));
+        await run(() => const ScoreRepository().search('bach'));
+        await run(() => SessionSummaryService.fetchSummary('session-1'));
+        await run(
+          () => PhraseUploadService.sendPhrase(
+            phraseNumber: 1,
+            bpm: 90,
+            timeSignature: '4/4',
+            piece: const PieceInfo(
+              title: 'T',
+              composer: 'C',
+              composedDate: '1722',
+            ),
+            expectedNotes: const [],
+            userNotes: const [],
+          ),
+        );
 
-      expect(seen, hasLength(4), reason: 'one request each; got ${seen.map((r) => r.uri.path).toList()}');
-      expect(keys.values.toSet(), {'k-123'}, reason: jsonEncode(keys));
-    });
+        expect(
+          seen,
+          hasLength(4),
+          reason:
+              'one request each; got ${seen.map((r) => r.uri.path).toList()}',
+        );
+        expect(keys.values.toSet(), {'k-123'}, reason: jsonEncode(keys));
+      },
+    );
   });
 }

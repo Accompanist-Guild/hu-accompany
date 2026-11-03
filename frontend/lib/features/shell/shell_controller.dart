@@ -9,10 +9,15 @@ import 'package:hu_accomponist/integrations/scores/score_models.dart';
 /// still send the person to Practice.
 class ShellController extends ChangeNotifier {
   int _index = PageSlot.home;
+  final Map<int, int> _tabs = {};
   LoadedScore? _practiceScore;
   int _tutorialRequests = 0;
 
+  /// The section ([PageSlot]) being shown.
   int get index => _index;
+
+  /// The tab [section] shows (see [sectionTabs]); 0 until one is picked.
+  int tabOf(int section) => _tabs[section] ?? 0;
 
   /// The score Practice was last told to open, if any.
   LoadedScore? get practiceScore => _practiceScore;
@@ -33,10 +38,15 @@ class ShellController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void goTo(int index) {
-    assert(index >= 0 && index <= PageSlot.guides);
-    if (index == _index) return;
+  /// Shows the section [index], on [tab] if given, otherwise on whichever
+  /// tab it was last left on.
+  void goTo(int index, {int? tab}) {
+    assert(index >= 0 && index < PageSlot.count);
+    assert(tab == null || tab < (sectionTabs[index]?.length ?? 0));
+    final tabChanged = tab != null && tab != tabOf(index);
+    if (index == _index && !tabChanged) return;
     _index = index;
+    if (tab != null) _tabs[index] = tab;
     notifyListeners();
   }
 
@@ -44,7 +54,8 @@ class ShellController extends ChangeNotifier {
   /// showing, since the score itself has changed.
   void openScore(LoadedScore score) {
     _practiceScore = score;
-    _index = PageSlot.practice;
+    _index = PageSlot.practiceRoom;
+    _tabs[PageSlot.practiceRoom] = PracticeTab.practice;
     notifyListeners();
   }
 
@@ -57,6 +68,7 @@ class ShellController extends ChangeNotifier {
   /// Back to a fresh start, for the next person who signs in.
   void reset() {
     _index = PageSlot.home;
+    _tabs.clear();
     _practiceScore = null;
     notifyListeners();
   }

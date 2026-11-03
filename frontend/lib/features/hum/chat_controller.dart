@@ -88,7 +88,8 @@ class ChatController extends ChangeNotifier {
   Future<bool> _mayShare() async {
     final ask = ensureConsent;
     if (ask == null) return true;
-    if (_asking) return false; // a question is already open: ignore the extra tap
+    if (_asking)
+      return false; // a question is already open: ignore the extra tap
     _asking = true;
     try {
       if (await ask()) return true;

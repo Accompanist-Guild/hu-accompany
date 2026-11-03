@@ -37,7 +37,8 @@ class ServerDiscovery {
     }
 
     final uri = Uri.tryParse(text);
-    final usable = uri != null &&
+    final usable =
+        uri != null &&
         uri.host.isNotEmpty &&
         (uri.scheme == 'https' ||
             (uri.scheme == 'http' && _isLocalHost(uri.host)));
@@ -104,7 +105,9 @@ class ServerDiscovery {
 
     // Use the previously discovered server when possible.
     if (!forceRefresh && _cachedBaseUrl != null) {
-      debugPrint('[Diagnostics] discovery: using cached backend $_cachedBaseUrl');
+      debugPrint(
+        '[Diagnostics] discovery: using cached backend $_cachedBaseUrl',
+      );
       return _cachedBaseUrl;
     }
 

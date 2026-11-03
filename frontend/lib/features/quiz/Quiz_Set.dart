@@ -25,8 +25,7 @@ class QuizSet {
 
   /// "The Middle Ages · ad 476 - ad 1450", or just the era when the span is
   /// missing.
-  String get subtitle =>
-      eraSpan.isEmpty ? eraName : '$eraName · $eraSpan';
+  String get subtitle => eraSpan.isEmpty ? eraName : '$eraName · $eraSpan';
 
   factory QuizSet.fromJson(Map<String, dynamic> json) {
     final topic = json['topic'] as Map<String, dynamic>? ?? const {};

@@ -157,7 +157,9 @@ class _ExercisePickerState extends State<ExercisePicker> {
                 : PracticePalette.ivory,
             borderRadius: Radii.cardRadius,
             border: Border.all(
-              color: selected ? PracticePalette.gold : PracticePalette.lightGold,
+              color: selected
+                  ? PracticePalette.gold
+                  : PracticePalette.lightGold,
             ),
           ),
           child: Row(

@@ -92,9 +92,7 @@ class PracticePenPanel extends StatelessWidget {
                 color: color,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: selected
-                      ? PracticePalette.gold
-                      : Colors.transparent,
+                  color: selected ? PracticePalette.gold : Colors.transparent,
                   width: 2,
                 ),
               ),
@@ -168,9 +166,7 @@ class PracticePenPanel extends StatelessWidget {
             Text(
               'Eraser',
               style: TextStyle(
-                color: isErasing
-                    ? PracticePalette.gold
-                    : PracticePalette.brown,
+                color: isErasing ? PracticePalette.gold : PracticePalette.brown,
                 fontSize: 12,
                 fontWeight: isErasing ? FontWeight.w700 : FontWeight.w400,
               ),

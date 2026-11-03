@@ -69,6 +69,17 @@ void main() {
     expect(find.text('Good morning, Ada'), findsOneWidget);
   });
 
+  testWidgets('the person\'s icon is the way into User Account', (
+    tester,
+  ) async {
+    await pumpHome(tester, recent: () async => []);
+    await tester.pump();
+    // No card for it among the others.
+    expect(find.text(accountPage.caption), findsNothing);
+    await tester.tap(find.text('A'));
+    expect(shell.index, PageSlot.account);
+  });
+
   testWidgets('shows a placeholder while the recent scores load', (
     tester,
   ) async {
@@ -121,9 +132,11 @@ void main() {
     expect(find.text('Continue Practicing'), findsNothing);
 
     await tester.tap(find.text('Find a score'));
-    expect(shell.index, PageSlot.search);
+    expect(shell.index, PageSlot.practiceRoom);
+    expect(shell.tabOf(PageSlot.practiceRoom), PracticeTab.search);
     await tester.tap(find.text('Try an exercise'));
-    expect(shell.index, PageSlot.practice);
+    expect(shell.index, PageSlot.practiceRoom);
+    expect(shell.tabOf(PageSlot.practiceRoom), PracticeTab.practice);
   });
 
   testWidgets('a store that cannot be read looks like an empty one', (
@@ -142,18 +155,18 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    for (var slot = PageSlot.practice; slot < diskPages.length; slot++) {
+    for (var slot = PageSlot.practiceRoom; slot < diskPages.length; slot++) {
       expect(
         find.text(diskPages[slot].caption, skipOffstage: false),
         findsOneWidget,
         reason: diskPages[slot].title,
       );
     }
-    final hum = find.text(diskPages[PageSlot.hum].caption);
-    await tester.ensureVisible(hum);
+    final minigames = find.text(diskPages[PageSlot.minigames].caption);
+    await tester.ensureVisible(minigames);
     await tester.pumpAndSettle();
-    await tester.tap(hum);
-    expect(shell.index, PageSlot.hum);
+    await tester.tap(minigames);
+    expect(shell.index, PageSlot.minigames);
   });
 
   for (final size in const [Size(320, 568), Size(400, 900), Size(1024, 768)]) {

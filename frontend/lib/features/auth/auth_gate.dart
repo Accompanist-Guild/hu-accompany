@@ -25,7 +25,7 @@ class AuthGate extends StatelessWidget {
 
   /// Passed on to the shell, so tests can leave out the real pages.
   @visibleForTesting
-  final Widget Function(int slot)? pageBuilder;
+  final Widget Function(int slot, int tab)? pageBuilder;
 
   const AuthGate({
     super.key,

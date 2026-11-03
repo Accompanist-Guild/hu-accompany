@@ -123,10 +123,22 @@ class Exercise {
       title: 'C major scale',
       description: 'Up and back down, one note per beat.',
       steps: [
-        ExerciseStep(60), ExerciseStep(62), ExerciseStep(64), ExerciseStep(65),
-        ExerciseStep(67), ExerciseStep(69), ExerciseStep(71), ExerciseStep(72),
-        ExerciseStep(72), ExerciseStep(71), ExerciseStep(69), ExerciseStep(67),
-        ExerciseStep(65), ExerciseStep(64), ExerciseStep(62), ExerciseStep(60),
+        ExerciseStep(60),
+        ExerciseStep(62),
+        ExerciseStep(64),
+        ExerciseStep(65),
+        ExerciseStep(67),
+        ExerciseStep(69),
+        ExerciseStep(71),
+        ExerciseStep(72),
+        ExerciseStep(72),
+        ExerciseStep(71),
+        ExerciseStep(69),
+        ExerciseStep(67),
+        ExerciseStep(65),
+        ExerciseStep(64),
+        ExerciseStep(62),
+        ExerciseStep(60),
       ],
     ),
     Exercise(
@@ -134,8 +146,14 @@ class Exercise {
       title: 'C major arpeggio',
       description: 'C, E, G, C up and down.',
       steps: [
-        ExerciseStep(60), ExerciseStep(64), ExerciseStep(67), ExerciseStep(72),
-        ExerciseStep(72), ExerciseStep(67), ExerciseStep(64), ExerciseStep(60),
+        ExerciseStep(60),
+        ExerciseStep(64),
+        ExerciseStep(67),
+        ExerciseStep(72),
+        ExerciseStep(72),
+        ExerciseStep(67),
+        ExerciseStep(64),
+        ExerciseStep(60),
       ],
     ),
     Exercise(
@@ -143,10 +161,20 @@ class Exercise {
       title: 'Twinkle, Twinkle',
       description: 'The opening phrase, with held notes.',
       steps: [
-        ExerciseStep(60), ExerciseStep(60), ExerciseStep(67), ExerciseStep(67),
-        ExerciseStep(69), ExerciseStep(69), ExerciseStep(67, 2),
-        ExerciseStep(65), ExerciseStep(65), ExerciseStep(64), ExerciseStep(64),
-        ExerciseStep(62), ExerciseStep(62), ExerciseStep(60, 2),
+        ExerciseStep(60),
+        ExerciseStep(60),
+        ExerciseStep(67),
+        ExerciseStep(67),
+        ExerciseStep(69),
+        ExerciseStep(69),
+        ExerciseStep(67, 2),
+        ExerciseStep(65),
+        ExerciseStep(65),
+        ExerciseStep(64),
+        ExerciseStep(64),
+        ExerciseStep(62),
+        ExerciseStep(62),
+        ExerciseStep(60, 2),
       ],
     ),
   ];
@@ -154,7 +182,18 @@ class Exercise {
   static double midiToHz(int midi) => 440.0 * math.pow(2, (midi - 69) / 12);
 
   static const _names = [
-    'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B',
+    'C',
+    'C#',
+    'D',
+    'D#',
+    'E',
+    'F',
+    'F#',
+    'G',
+    'G#',
+    'A',
+    'A#',
+    'B',
   ];
 
   static String noteName(int midi) => '${_names[midi % 12]}${midi ~/ 12 - 1}';
@@ -171,8 +210,7 @@ class Exercise {
       final midi = step.midi + shift;
       final bar = beat ~/ beatsPerBar;
       final nextBeat = beat + step.beats;
-      final lastInBar =
-          i == steps.length - 1 || nextBeat ~/ beatsPerBar != bar;
+      final lastInBar = i == steps.length - 1 || nextBeat ~/ beatsPerBar != bar;
       notes.add(
         ExpectedNote(
           noteId: i + 1,
@@ -199,8 +237,9 @@ class Exercise {
     'instrument': null,
     'curr_music_phrase': 0,
     'timing': {'bpm': bpm.toDouble(), 'beat_unit': 4},
-    'notes': layout(bpm: bpm, octave: octave)
-        .map((n) => n.toRustJson())
-        .toList(),
+    'notes': layout(
+      bpm: bpm,
+      octave: octave,
+    ).map((n) => n.toRustJson()).toList(),
   };
 }

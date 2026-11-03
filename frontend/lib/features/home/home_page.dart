@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'package:hu_accomponist/features/practice/Open_Practice.dart';
 import 'package:hu_accomponist/features/shell/disk_pages.dart';
-import 'package:hu_accomponist/features/shell/mini_disk.dart';
 import 'package:hu_accomponist/features/shell/shell_controller.dart';
 import 'package:hu_accomponist/features/shelf/Shelf_Manager.dart';
 import 'package:hu_accomponist/shared/theme/Color_Theme.dart';
@@ -93,7 +92,8 @@ class _HomePageState extends State<HomePage> {
     return name == null || name.isEmpty ? part : '$part, $name';
   }
 
-  void _go(int slot) => ShellScope.maybeOf(context)?.goTo(slot);
+  void _go(int slot, {int? tab}) =>
+      ShellScope.maybeOf(context)?.goTo(slot, tab: tab);
 
   @override
   Widget build(BuildContext context) {
@@ -160,10 +160,9 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         const SizedBox(width: Space.md),
-        MiniDisk(
-          size: 52,
-          diskColor: TurntablePalette.diskPractice,
-          icon: Icons.music_note_rounded,
+        _AccountButton(
+          name: widget.userName,
+          onTap: () => _go(PageSlot.account),
         ),
       ],
     );
@@ -235,13 +234,15 @@ class _HomePageState extends State<HomePage> {
             runSpacing: Space.xs,
             children: [
               FilledButton.icon(
-                onPressed: () => _go(PageSlot.search),
+                onPressed: () =>
+                    _go(PageSlot.practiceRoom, tab: PracticeTab.search),
                 icon: const Icon(Icons.search_rounded, size: 18),
                 label: const Text('Find a score'),
                 style: _goldButton,
               ),
               OutlinedButton.icon(
-                onPressed: () => _go(PageSlot.practice),
+                onPressed: () =>
+                    _go(PageSlot.practiceRoom, tab: PracticeTab.practice),
                 icon: const Icon(Icons.piano_rounded, size: 18),
                 label: const Text('Try an exercise'),
                 style: OutlinedButton.styleFrom(
@@ -267,7 +268,11 @@ class _HomePageState extends State<HomePage> {
           runSpacing: gap,
           children: [
             // Every page but this one.
-            for (var slot = PageSlot.practice; slot < diskPages.length; slot++)
+            for (
+              var slot = PageSlot.practiceRoom;
+              slot < diskPages.length;
+              slot++
+            )
               SizedBox(
                 width: width,
                 child: _NavCard(page: diskPages[slot], onTap: () => _go(slot)),
@@ -501,6 +506,59 @@ class _EarlierRow extends StatelessWidget {
               size: 18,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The person's icon: their initial, or a silhouette without a name. The
+/// only way into User Account.
+class _AccountButton extends StatelessWidget {
+  final String? name;
+  final VoidCallback onTap;
+  const _AccountButton({required this.name, required this.onTap});
+
+  static const double _size = 52;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = name?.trim().characters.firstOrNull?.toUpperCase();
+    return Tooltip(
+      message: accountPage.tooltip,
+      waitDuration: navTooltipWait,
+      child: Semantics(
+        button: true,
+        label: accountPage.title,
+        excludeSemantics: true,
+        child: PressScale(
+          onTap: onTap,
+          borderRadius: Radii.pillRadius,
+          pressedScale: 0.94,
+          child: Container(
+            width: _size,
+            height: _size,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: PracticePalette.gold.withValues(alpha: 0.12),
+              border: Border.all(color: PracticePalette.lightGold, width: 1.5),
+            ),
+            child: initial == null
+                ? const Icon(
+                    Icons.person_rounded,
+                    size: 28,
+                    color: PracticePalette.gold,
+                  )
+                : Text(
+                    initial,
+                    style: const TextStyle(
+                      color: PracticePalette.gold,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+          ),
         ),
       ),
     );

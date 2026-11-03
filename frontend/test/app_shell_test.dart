@@ -96,14 +96,19 @@ void main() {
         home: AppShell(
           auth: auth,
           controller: shell,
-          pageBuilder: (slot) => switch (slot) {
-            PageSlot.practice => const _Counter(name: 'practice'),
-            PageSlot.shelf => const _Counter(name: 'shelf'),
+          pageBuilder: (slot, tab) => switch ((slot, tab)) {
+            (PageSlot.practiceRoom, PracticeTab.practice) => const _Counter(
+              name: 'practice',
+            ),
+            (PageSlot.practiceRoom, PracticeTab.shelf) => const _Counter(
+              name: 'shelf',
+            ),
             _ => Builder(
               builder: (context) {
                 lastPageBottomInset = MediaQuery.paddingOf(context).bottom;
+                final page = sectionTabs[slot]?[tab] ?? pageFor(slot);
                 return Scaffold(
-                  body: Center(child: Text('page:${diskPages[slot].title}')),
+                  body: Center(child: Text('page:${page.title}')),
                 );
               },
             ),
@@ -114,13 +119,8 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> swipeBar(WidgetTester tester, double dx) async {
-    await tester.drag(find.byType(DiskBar), Offset(dx, 0));
-    await tester.pumpAndSettle();
-  }
-
   group('bottom disk bar', () {
-    testWidgets('opens on Home with its disk in the middle', (tester) async {
+    testWidgets('opens on Home with its disk marked', (tester) async {
       await pumpShell(tester);
       expect(shell.index, PageSlot.home);
       expect(find.text('page:Home'), findsOneWidget);
@@ -130,94 +130,111 @@ void main() {
       expect(active.single.icon, diskPages[PageSlot.home].icon);
     });
 
-    testWidgets('shows three disks, the middle one marked', (tester) async {
+    testWidgets('shows every disk, one marked', (tester) async {
       await pumpShell(tester);
-      final disks = tester.widgetList<MiniDisk>(find.byType(MiniDisk));
-      // The page before, this one and the page after (the next one beyond is
-      // still fully faded out).
-      final visible = tester.widgetList<Opacity>(
+      final disks = tester.widgetList<MiniDisk>(
         find.descendant(
           of: find.byType(DiskBar),
-          matching: find.byType(Opacity),
+          matching: find.byType(MiniDisk),
         ),
       );
-      expect(visible.where((o) => o.opacity > 0.99).length, 3);
+      expect(disks.map((d) => d.icon), [for (final p in diskPages) p.icon]);
       expect(disks.where((d) => d.active).length, 1);
     });
 
-    testWidgets('the three disks sit in a row, evenly spaced', (tester) async {
+    testWidgets('the disks sit in a row, evenly spaced and centred', (
+      tester,
+    ) async {
       await pumpShell(tester);
       final centers = [
-        for (final icon in [
-          diskPages[PageSlot.guides].icon,
-          diskPages[PageSlot.home].icon,
-          diskPages[PageSlot.practice].icon,
-        ])
+        for (final page in diskPages)
           tester.getCenter(
-            find.byWidgetPredicate((w) => w is MiniDisk && w.icon == icon),
+            find.descendant(
+              of: find.byType(DiskBar),
+              matching: find.byWidgetPredicate(
+                (w) => w is MiniDisk && w.icon == page.icon,
+              ),
+            ),
           ),
       ];
-      expect(centers[0].dy, closeTo(centers[1].dy, 0.5));
-      expect(centers[1].dy, closeTo(centers[2].dy, 0.5));
-      expect(
-        centers[1].dx - centers[0].dx,
-        closeTo(centers[2].dx - centers[1].dx, 0.5),
-      );
-      expect(centers[1].dx, closeTo(200, 0.5)); // middle of a 400-wide screen
+      final step = centers[1].dx - centers[0].dx;
+      for (var i = 1; i < centers.length; i++) {
+        expect(centers[i].dy, closeTo(centers[0].dy, 0.5));
+        expect(centers[i].dx - centers[i - 1].dx, closeTo(step, 0.5));
+      }
+      final middle = (centers.first.dx + centers.last.dx) / 2;
+      expect(middle, closeTo(200, 0.5)); // middle of a 400-wide screen
+      expect(centers.first.dx, greaterThan(0));
+      expect(centers.last.dx, lessThan(400));
     });
 
-    testWidgets('swiping left cycles to the next page, right to the last', (
-      tester,
-    ) async {
+    testWidgets('fits every disk on a narrow phone', (tester) async {
       await pumpShell(tester);
-      await swipeBar(tester, -100);
-      expect(shell.index, PageSlot.practice);
-      expect(find.text('practice:0'), findsOneWidget);
-
-      await swipeBar(tester, 100);
-      expect(shell.index, PageSlot.home);
-    });
-
-    testWidgets('swiping right from the first page wraps to the last', (
-      tester,
-    ) async {
-      await pumpShell(tester);
-      await swipeBar(tester, 100);
-      expect(shell.index, PageSlot.guides);
-      expect(find.text('page:Guides'), findsOneWidget);
-
-      await swipeBar(tester, -100);
-      expect(shell.index, PageSlot.home);
-    });
-
-    testWidgets('a short drag settles back on the same page', (tester) async {
-      await pumpShell(tester);
-      await swipeBar(tester, -30);
-      expect(shell.index, PageSlot.home);
-      // And the disks are back where they were: the middle one is centred.
-      final middle = find.byWidgetPredicate(
-        (w) => w is MiniDisk && w.icon == diskPages[PageSlot.home].icon,
-      );
-      expect(tester.getCenter(middle).dx, closeTo(200, 0.5));
-    });
-
-    testWidgets('a fling can browse past the neighbouring page', (
-      tester,
-    ) async {
-      await pumpShell(tester);
-      await tester.fling(find.byType(DiskBar), const Offset(-200, 0), 2000);
+      tester.view.physicalSize = const Size(320, 568);
       await tester.pumpAndSettle();
-      expect(shell.index, greaterThan(PageSlot.practice));
+      expect(tester.takeException(), isNull);
+      for (final page in diskPages) {
+        final rect = tester.getRect(
+          find.descendant(
+            of: find.byType(DiskBar),
+            matching: find.byWidgetPredicate(
+              (w) => w is MiniDisk && w.icon == page.icon,
+            ),
+          ),
+        );
+        expect(rect.left, greaterThanOrEqualTo(0), reason: page.title);
+        expect(rect.right, lessThanOrEqualTo(320), reason: page.title);
+      }
     });
 
-    testWidgets('tapping a neighbouring disk goes to its page', (tester) async {
+    testWidgets('has no disk for User Account, and marks none while it shows', (
+      tester,
+    ) async {
+      await pumpShell(tester);
+      shell.goTo(PageSlot.account);
+      await tester.pumpAndSettle();
+      expect(find.text('page:User Account'), findsOneWidget);
+      final disks = tester.widgetList<MiniDisk>(
+        find.descendant(
+          of: find.byType(DiskBar),
+          matching: find.byType(MiniDisk),
+        ),
+      );
+      expect(disks.any((d) => d.icon == accountPage.icon), isFalse);
+      expect(disks.where((d) => d.active), isEmpty);
+    });
+
+    testWidgets('dragging along the row does not change page', (tester) async {
+      await pumpShell(tester);
+      await tester.drag(find.byType(DiskBar), const Offset(-150, 0));
+      await tester.pumpAndSettle();
+      expect(shell.index, PageSlot.home);
+    });
+
+    testWidgets('tapping any disk goes to its page', (tester) async {
+      await pumpShell(tester);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(DiskBar),
+          matching: find.byWidgetPredicate(
+            (w) =>
+                w is MiniDisk && w.icon == diskPages[PageSlot.minigames].icon,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(shell.index, PageSlot.minigames);
+      expect(find.text('page:Hum'), findsOneWidget);
+    });
+
+    testWidgets('tapping the next disk goes to its page', (tester) async {
       await pumpShell(tester);
       final practiceDisk = find.byWidgetPredicate(
-        (w) => w is MiniDisk && w.icon == diskPages[PageSlot.practice].icon,
+        (w) => w is MiniDisk && w.icon == diskPages[PageSlot.practiceRoom].icon,
       );
       await tester.tap(practiceDisk);
       await tester.pumpAndSettle();
-      expect(shell.index, PageSlot.practice);
+      expect(shell.index, PageSlot.practiceRoom);
       expect(find.text('practice:0'), findsOneWidget);
     });
 
@@ -225,20 +242,20 @@ void main() {
       tester,
     ) async {
       await pumpShell(tester);
-      shell.goTo(PageSlot.quiz);
+      shell.goTo(PageSlot.learning, tab: LearningTab.quiz);
       await tester.pumpAndSettle();
       expect(lastPageBottomInset, tester.getSize(find.byType(DiskBar)).height);
     });
 
     testWidgets('Practice is kept while another page is shown', (tester) async {
       await pumpShell(tester);
-      shell.goTo(PageSlot.practice);
+      shell.goTo(PageSlot.practiceRoom);
       await tester.pumpAndSettle();
       await tester.tap(find.text('practice:0'));
       await tester.pump();
       expect(find.text('practice:1'), findsOneWidget);
 
-      shell.goTo(PageSlot.shelf);
+      shell.goTo(PageSlot.practiceRoom, tab: PracticeTab.shelf);
       await tester.pumpAndSettle();
       expect(find.text('practice:1', skipOffstage: false), findsOneWidget);
       expect(find.text('practice:1'), findsNothing); // hidden
@@ -246,12 +263,20 @@ void main() {
       await tester.pump();
       expect(find.text('shelf:1'), findsOneWidget);
 
-      shell.goTo(PageSlot.practice);
+      shell.goTo(PageSlot.practiceRoom, tab: PracticeTab.practice);
+      await tester.pumpAndSettle();
+      expect(find.text('practice:1'), findsOneWidget);
+
+      // And while another section is shown.
+      shell.goTo(PageSlot.account);
+      await tester.pumpAndSettle();
+      expect(find.text('practice:1', skipOffstage: false), findsOneWidget);
+      shell.goTo(PageSlot.practiceRoom);
       await tester.pumpAndSettle();
       expect(find.text('practice:1'), findsOneWidget);
 
       // Other pages start afresh each visit.
-      shell.goTo(PageSlot.shelf);
+      shell.goTo(PageSlot.practiceRoom, tab: PracticeTab.shelf);
       await tester.pumpAndSettle();
       expect(find.text('shelf:0'), findsOneWidget);
     });
@@ -267,7 +292,7 @@ void main() {
   group('disk drawer', () {
     testWidgets('holding the bar buzzes and opens every page', (tester) async {
       await pumpShell(tester);
-      expect(find.text('QUIZ'), findsNothing);
+      expect(find.text('MINIGAMES'), findsNothing);
 
       await tester.longPress(find.byType(DiskBar));
       await tester.pumpAndSettle();
@@ -276,8 +301,9 @@ void main() {
       for (final page in diskPages) {
         expect(find.text(page.title.toUpperCase()), findsWidgets);
       }
-      expect(find.text('QUIZ'), findsOneWidget);
-      expect(find.text('SETTINGS'), findsOneWidget);
+      expect(find.text('MINIGAMES'), findsOneWidget);
+      // User Account is opened from the person's icon on Home only.
+      expect(find.text('USER ACCOUNT'), findsNothing);
     });
 
     testWidgets('labels are plain text, centred under their disk', (
@@ -320,12 +346,12 @@ void main() {
       await tester.longPress(find.byType(DiskBar));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('QUIZ'));
+      await tester.tap(find.text('MINIGAMES'));
       await tester.pumpAndSettle();
 
-      expect(shell.index, PageSlot.quiz);
-      expect(find.text('page:Quiz'), findsOneWidget);
-      expect(find.text('SETTINGS'), findsNothing);
+      expect(shell.index, PageSlot.minigames);
+      expect(find.text('page:Hum'), findsOneWidget);
+      expect(find.text('LEARNING AREA'), findsNothing);
     });
 
     testWidgets('tapping outside the disks closes it where it was', (
@@ -339,7 +365,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(shell.index, PageSlot.home);
-      expect(find.text('QUIZ'), findsNothing);
+      expect(find.text('MINIGAMES'), findsNothing);
     });
 
     testWidgets('dims the page behind it with a blur', (tester) async {
@@ -374,13 +400,15 @@ void main() {
       expect(await const OnboardingStore().hasCompleted(), isTrue);
     });
 
-    testWidgets('the intro does not let a swipe through to the disks', (
+    testWidgets('the intro does not let a tap through to the disks', (
       tester,
     ) async {
       await pumpShell(tester, onboardingDone: false);
-      await tester.drag(
-        find.byType(DiskBar),
-        const Offset(-100, 0),
+      await tester.tap(
+        find.byWidgetPredicate(
+          (w) =>
+              w is MiniDisk && w.icon == diskPages[PageSlot.practiceRoom].icon,
+        ),
         warnIfMissed: false,
       );
       await tester.pumpAndSettle();
@@ -388,55 +416,20 @@ void main() {
       expect(find.text('Meet your disks'), findsOneWidget);
     });
 
-    testWidgets('waits for a real swipe, and has no button to skip past it', (
+    testWidgets('walks through the hold, the drawer and the tour', (
       tester,
     ) async {
       await pumpShell(tester, onboardingDone: false);
       await tester.tap(find.text('Show me'));
-      await tester.pumpAndSettle();
-      expect(find.text('Swipe to explore your disks'), findsOneWidget);
-      expect(find.text('Next'), findsNothing);
-      expect(find.text('Skip'), findsOneWidget);
-
-      // Tapping a disk changes the page but is not the swipe.
-      await tester.tap(
-        find.byWidgetPredicate(
-          (w) => w is MiniDisk && w.icon == diskPages[PageSlot.practice].icon,
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.pump(const Duration(seconds: 2));
-      expect(find.text('Swipe to explore your disks'), findsOneWidget);
-      expect(find.text('Nice swipe!'), findsNothing);
-
-      // A drag too short to change the page is not it either.
-      await tester.drag(find.byType(DiskBar), const Offset(-20, 0));
-      await tester.pumpAndSettle();
-      expect(find.text('Nice swipe!'), findsNothing);
-    });
-
-    testWidgets('walks through the swipe, the hold, the drawer and the tour', (
-      tester,
-    ) async {
-      await pumpShell(tester, onboardingDone: false);
-      await tester.tap(find.text('Show me'));
-      await tester.pumpAndSettle();
-      expect(find.text('Swipe to explore your disks'), findsOneWidget);
-
-      // The swipe is done on the real disks, through the hole in the dimming.
-      await swipeBar(tester, -100);
-      expect(shell.index, PageSlot.practice);
-      expect(find.text('Nice swipe!'), findsOneWidget);
-
-      await tester.pump(const Duration(milliseconds: 1200));
       await tester.pumpAndSettle();
       expect(find.text('Press and hold for the disk drawer'), findsOneWidget);
 
+      // The hold is done on the real disks, through the hole in the dimming.
       await tester.longPress(find.byType(DiskBar));
       await tester.pumpAndSettle();
       expect(find.text('Tap a disk to jump there'), findsOneWidget);
 
-      await tester.tap(find.text('QUIZ'));
+      await tester.tap(find.text('MINIGAMES'));
       await tester.pumpAndSettle();
       expect(find.text('Where things are'), findsOneWidget);
       expect(shell.index, PageSlot.home);
@@ -452,23 +445,20 @@ void main() {
       await pumpShell(tester, onboardingDone: false);
       await tester.tap(find.text('Show me'));
       await tester.pumpAndSettle();
-      await swipeBar(tester, -100);
-      await tester.pump(const Duration(milliseconds: 1200));
-      await tester.pumpAndSettle();
       expect(find.text('Press and hold for the disk drawer'), findsOneWidget);
 
       // Skipping the hold shows what it would have opened.
       await tester.tap(find.text('Next'));
       await tester.pumpAndSettle();
       expect(find.text('Tap a disk to jump there'), findsOneWidget);
-      expect(find.text('QUIZ'), findsOneWidget);
+      expect(find.text('MINIGAMES'), findsOneWidget);
     });
 
     testWidgets('the dimmed area does not let touches through to the page', (
       tester,
     ) async {
       await pumpShell(tester, onboardingDone: false);
-      shell.goTo(PageSlot.practice);
+      shell.goTo(PageSlot.practiceRoom);
       await tester.pumpAndSettle();
       await tester.tap(find.text('practice:0'), warnIfMissed: false);
       await tester.pump();
@@ -477,7 +467,7 @@ void main() {
 
     testWidgets('can be replayed from anywhere in the app', (tester) async {
       await pumpShell(tester);
-      shell.goTo(PageSlot.settings);
+      shell.goTo(PageSlot.account);
       await tester.pumpAndSettle();
       shell.replayTutorial();
       await tester.pumpAndSettle();

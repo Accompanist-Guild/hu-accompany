@@ -141,7 +141,8 @@ class _Quiz_Home_PageState extends State<Quiz_Home_Page> {
         decoration: InputDecoration(
           border: InputBorder.none,
           isDense: true,
-          hintText: 'RCM HISTORY 10 + ARCT CHEAT SHEET\n'
+          hintText:
+              'RCM HISTORY 10 + ARCT CHEAT SHEET\n'
               'The Middle Ages (ad 476 - ad 1450)',
           hintStyle: TextStyle(
             fontFamily: libBookFont,
@@ -178,9 +179,7 @@ class _Quiz_Home_PageState extends State<Quiz_Home_Page> {
                       : libCreamCard,
                   borderRadius: Radii.lgRadius,
                   border: Border.all(
-                    color: selected
-                        ? libGold
-                        : libInk.withValues(alpha: 0.10),
+                    color: selected ? libGold : libInk.withValues(alpha: 0.10),
                   ),
                 ),
                 child: Text(

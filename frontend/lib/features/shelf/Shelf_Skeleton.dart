@@ -51,13 +51,12 @@ class ShelfSkeleton extends StatelessWidget {
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: Space.lg),
             sliver: SliverGrid(
-              gridDelegate:
-                  const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    mainAxisSpacing: Space.md,
-                    crossAxisSpacing: Space.sm,
-                    childAspectRatio: 0.54,
-                  ),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                mainAxisSpacing: Space.md,
+                crossAxisSpacing: Space.sm,
+                childAspectRatio: 0.54,
+              ),
               delegate: SliverChildBuilderDelegate(
                 (context, _) => const _SkeletonTile(),
                 childCount: tileCount,
@@ -83,10 +82,7 @@ class _SkeletonTile extends StatelessWidget {
           child: SkeletonBox(height: double.infinity),
         ),
         SizedBox(height: Space.xs),
-        SkeletonBox(
-          height: 9,
-          borderRadius: Radii.pillRadius,
-        ),
+        SkeletonBox(height: 9, borderRadius: Radii.pillRadius),
         SizedBox(height: Space.xxs + 2),
         FractionallySizedBox(
           alignment: Alignment.centerLeft,

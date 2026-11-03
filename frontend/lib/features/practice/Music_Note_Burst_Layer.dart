@@ -75,8 +75,9 @@ class _NoteBurstLayerState extends State<NoteBurstLayer>
       height: overlaySize,
       child: AnimatedBuilder(
         animation: widget.controller,
-        builder: (context, _) =>
-            CustomPaint(painter: _NoteBurstPainter(widget.controller.particles)),
+        builder: (context, _) => CustomPaint(
+          painter: _NoteBurstPainter(widget.controller.particles),
+        ),
       ),
     );
   }

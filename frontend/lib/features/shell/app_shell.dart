@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:hu_accomponist/features/discussion/discussion_page.dart';
 import 'package:hu_accomponist/features/guides/guides_page.dart';
 import 'package:hu_accomponist/features/home/home_page.dart';
 import 'package:hu_accomponist/features/hum/hum_page.dart';
@@ -10,6 +11,7 @@ import 'package:hu_accomponist/features/settings/settings_page.dart';
 import 'package:hu_accomponist/features/shell/disk_bar.dart';
 import 'package:hu_accomponist/features/shell/disk_drawer.dart';
 import 'package:hu_accomponist/features/shell/disk_pages.dart';
+import 'package:hu_accomponist/features/shell/section_tabs.dart';
 import 'package:hu_accomponist/features/shell/shell_controller.dart';
 import 'package:hu_accomponist/features/shell/tutorial_overlay.dart';
 import 'package:hu_accomponist/features/shelf/Shelf_Page.dart';
@@ -22,8 +24,9 @@ import 'package:hu_accomponist/shared/theme/Design_Tokens.dart';
 /// disk drawer and, the first time, the tutorial.
 ///
 /// Pages are hosted here rather than pushed, so changing page doesn't stack
-/// routes. Practice is kept alive once built (a score, an exercise and a
-/// recording in progress should survive a look at Settings); every other
+/// routes. The Practice Room, and Practice inside it, is kept alive once
+/// built (a score, an exercise and a recording in progress should survive a
+/// look at User Account); every other
 /// page is built when shown and dropped when left, as it was when each was a
 /// pushed route, so a hum doesn't keep playing from another page.
 class AppShell extends StatefulWidget {
@@ -31,10 +34,11 @@ class AppShell extends StatefulWidget {
   final ShellController controller;
   final OnboardingStore onboarding;
 
-  /// Builds the page for a slot; tests stand in for the real pages, which
-  /// need the microphone, a WebView and the server.
+  /// Builds the page for a slot and, in a section with tabs, the tab;
+  /// tests stand in for the real pages, which need the microphone, a
+  /// WebView and the server.
   @visibleForTesting
-  final Widget Function(int slot)? pageBuilder;
+  final Widget Function(int slot, int tab)? pageBuilder;
 
   const AppShell({
     super.key,
@@ -61,10 +65,8 @@ class _AppShellState extends State<AppShell>
   int _tutorialRequestsSeen = 0;
   int _lastIndex = PageSlot.home;
 
-  /// The person has done the swipe the tutorial asked for.
-  bool _swipeDone = false;
-
-  /// Practice is built the first time it is shown and kept after that.
+  /// The Practice Room is built the first time it is shown and kept after
+  /// that.
   bool _practiceBuilt = false;
 
   @override
@@ -72,7 +74,7 @@ class _AppShellState extends State<AppShell>
     super.initState();
     _fade = AnimationController(vsync: this, duration: Motion.base, value: 1);
     _lastIndex = _shell.index;
-    _practiceBuilt = _shell.index == PageSlot.practice;
+    _practiceBuilt = _shell.index == PageSlot.practiceRoom;
     _tutorialRequestsSeen = _shell.tutorialRequests;
     _shell.addListener(_onShellChanged);
     widget.auth.addListener(_onAuthChanged);
@@ -98,7 +100,6 @@ class _AppShellState extends State<AppShell>
     _shell.goTo(PageSlot.home);
     setState(() {
       _drawerOpen = false;
-      _swipeDone = false;
       _tutorialStep = TutorialStep.welcome;
     });
   }
@@ -123,20 +124,6 @@ class _AppShellState extends State<AppShell>
     if (step + 1 == TutorialStep.tour) _shell.goTo(PageSlot.home);
   }
 
-  /// The disk bar reports a swipe that changed the page. Only that counts
-  /// for the tutorial: tapping a disk or using the drawer doesn't.
-  void _onSwiped(int page) {
-    if (_tutorialStep != TutorialStep.swipe || _swipeDone) return;
-    setState(() => _swipeDone = true);
-    // Let the congratulation be seen, and the new page, before moving on.
-    Future<void>.delayed(const Duration(milliseconds: 1100), () {
-      if (mounted && _tutorialStep == TutorialStep.swipe) {
-        _swipeDone = false;
-        _setStep(TutorialStep.hold);
-      }
-    });
-  }
-
   /// Ends the tour, finished or skipped, and remembers it so it doesn't
   /// start by itself again.
   Future<void> _endTutorial() async {
@@ -152,7 +139,7 @@ class _AppShellState extends State<AppShell>
 
   List<DiskPage> get _pages => diskPages;
 
-  /// Roles arrive with the account: the Guides page shows its editing
+  /// Roles arrive with the account: the Guides tab shows its editing
   /// tools only to authors, so it rebuilds when they change.
   void _onAuthChanged() {
     if (mounted) setState(() {});
@@ -163,7 +150,7 @@ class _AppShellState extends State<AppShell>
       _tutorialRequestsSeen = _shell.tutorialRequests;
       _beginTutorial();
     }
-    if (_shell.index == PageSlot.practice) _practiceBuilt = true;
+    if (_shell.index == PageSlot.practiceRoom) _practiceBuilt = true;
     if (_shell.index != _lastIndex) {
       _lastIndex = _shell.index;
       _fade.forward(from: 0);
@@ -175,8 +162,7 @@ class _AppShellState extends State<AppShell>
     if (_drawerOpen) return;
     setState(() {
       _drawerOpen = true;
-      if (_tutorialStep == TutorialStep.swipe ||
-          _tutorialStep == TutorialStep.hold) {
+      if (_tutorialStep == TutorialStep.hold) {
         _tutorialStep = TutorialStep.drawer;
       }
     });
@@ -200,16 +186,33 @@ class _AppShellState extends State<AppShell>
 
   // ── Build ──────────────────────────────────────────────────────────
 
-  Widget _page(int slot) => widget.pageBuilder?.call(slot) ?? _realPage(slot);
+  Widget _page(int slot) {
+    final tabs = sectionTabs[slot];
+    if (tabs == null) return _leaf(slot, 0);
+    return SectionTabs(
+      tabs: tabs,
+      selected: _shell.tabOf(slot),
+      onSelected: (tab) => _shell.goTo(slot, tab: tab),
+      pageBuilder: (tab) => _leaf(slot, tab),
+      keepAliveTab: slot == PageSlot.practiceRoom ? PracticeTab.practice : null,
+      hideTabs: _shell.immersive,
+    );
+  }
 
-  Widget _realPage(int slot) => switch (slot) {
-    PageSlot.home => HomePage(userName: widget.auth.user?.displayName),
-    PageSlot.practice => ScoreViewerPage(selected: _shell.practiceScore),
-    PageSlot.search => const Music_Library_Page(),
-    PageSlot.shelf => const Shelf_Page(),
-    PageSlot.quiz => const Quiz_Home_Page(),
-    PageSlot.hum => const HumPage(),
-    PageSlot.guides => GuidesPage(auth: widget.auth),
+  Widget _leaf(int slot, int tab) =>
+      widget.pageBuilder?.call(slot, tab) ?? _realPage(slot, tab);
+
+  Widget _realPage(int slot, int tab) => switch ((slot, tab)) {
+    (PageSlot.home, _) => HomePage(userName: widget.auth.user?.displayName),
+    (PageSlot.practiceRoom, PracticeTab.search) => const Music_Library_Page(),
+    (PageSlot.practiceRoom, PracticeTab.shelf) => const Shelf_Page(),
+    (PageSlot.practiceRoom, _) => ScoreViewerPage(
+      selected: _shell.practiceScore,
+    ),
+    (PageSlot.discussion, _) => const DiscussionPage(),
+    (PageSlot.learning, LearningTab.quiz) => const Quiz_Home_Page(),
+    (PageSlot.learning, _) => GuidesPage(auth: widget.auth),
+    (PageSlot.minigames, _) => const HumPage(),
     _ => SettingsPage(auth: widget.auth),
   };
 
@@ -221,8 +224,9 @@ class _AppShellState extends State<AppShell>
     final barVisible = media.viewInsets.bottom == 0 && !_shell.immersive;
     final barHeight = DiskBar.heightFor(context);
     final pages = _pages;
-    // A slot not offered (a stale Guides index) shows Home meanwhile.
-    final index = _shell.index < pages.length ? _shell.index : PageSlot.home;
+    // A slot not offered shows Home meanwhile. User Account is a page with
+    // no disk: while it shows, no disk is marked.
+    final index = _shell.index < PageSlot.count ? _shell.index : PageSlot.home;
     final blocking = _drawerOpen || _tutorialStep != null;
 
     // Pages are told the bar's height is part of the bottom inset, so their
@@ -237,7 +241,7 @@ class _AppShellState extends State<AppShell>
     );
 
     return PopScope(
-      // Back closes the drawer or the tour first, then returns to Practice,
+      // Back closes the drawer or the tour first, then returns to Home,
       // and only then leaves the app.
       canPop: !blocking && index == PageSlot.home,
       onPopInvokedWithResult: (didPop, _) {
@@ -261,8 +265,8 @@ class _AppShellState extends State<AppShell>
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    for (var slot = 0; slot < pages.length; slot++)
-                      if ((slot == PageSlot.practice && _practiceBuilt) ||
+                    for (var slot = 0; slot < PageSlot.count; slot++)
+                      if ((slot == PageSlot.practiceRoom && _practiceBuilt) ||
                           slot == index)
                         _hosted(slot, active: slot == index),
                   ],
@@ -277,7 +281,6 @@ class _AppShellState extends State<AppShell>
                 child: DiskBar(
                   index: index,
                   onSelected: _shell.goTo,
-                  onSwiped: _onSwiped,
                   onHold: _openDrawer,
                   pages: pages,
                 ),
@@ -294,7 +297,6 @@ class _AppShellState extends State<AppShell>
                 child: TutorialOverlay(
                   step: step,
                   barHeight: barHeight,
-                  succeeded: _swipeDone,
                   onNext: _nextStep,
                   onSkip: _endTutorial,
                   onDone: _endTutorial,
@@ -307,10 +309,10 @@ class _AppShellState extends State<AppShell>
     );
   }
 
-  /// One page of the shell. Practice stays in the tree while another page is
-  /// shown, hidden and with its animations stopped. The wrapper widgets are
-  /// the same whether or not the page is active, so switching never rebuilds
-  /// the page from scratch.
+  /// One page of the shell. The Practice Room stays in the tree while
+  /// another page is shown, hidden and with its animations stopped. The
+  /// wrapper widgets are the same whether or not the page is active, so
+  /// switching never rebuilds the page from scratch.
   Widget _hosted(int slot, {required bool active}) {
     return Offstage(
       key: ValueKey(slot),

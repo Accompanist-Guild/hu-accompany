@@ -36,7 +36,9 @@ class ApiClient {
   }) {
     return _send((baseUrl) {
       final uri = Uri.parse('$baseUrl$path').replace(queryParameters: query);
-      return http.get(uri, headers: ServerAuth.headers(headers)).timeout(timeout);
+      return http
+          .get(uri, headers: ServerAuth.headers(headers))
+          .timeout(timeout);
     });
   }
 
@@ -82,7 +84,10 @@ class ApiClient {
   Future<http.Response> delete(String path, {Map<String, String>? headers}) {
     return _send((baseUrl) {
       return http
-          .delete(Uri.parse('$baseUrl$path'), headers: ServerAuth.headers(headers))
+          .delete(
+            Uri.parse('$baseUrl$path'),
+            headers: ServerAuth.headers(headers),
+          )
           .timeout(timeout);
     });
   }
